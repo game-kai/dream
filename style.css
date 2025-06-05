@@ -1,0 +1,51 @@
+
+.none {
+    display: none;
+}
+
+canvas {
+    image-rendering: pixelated;
+    inline-size: 100%;
+    block-size: 100%;
+}
+
+div {
+    inline-size: 100svmin;
+    block-size: 100svmin;
+    margin-inline: auto;
+}
+
+body {
+    background-color: #000;
+    inline-size: 100%;
+    block-size: 100%;
+}
+
+:root {
+    color: #FFF;
+    inline-size: 100svi;
+    block-size: 100svb;
+    overflow: hidden;
+    font-size: 2svmin;
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    font-size: 1em;
+    font-weight: normal;
+    font-family: sans-serif;
+    line-height: 2em;
+    word-spacing: 0;
+    letter-spacing: 0;
+    box-sizing: border-box;
+    touch-action: manipulation;
+    text-decoration: none;
+    outline: none;
+    user-select: none;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+}
