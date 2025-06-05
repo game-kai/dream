@@ -185,7 +185,7 @@ const sound = new Sound();
 // すべてのゲームのスーパークラス
 const Game = class {
 
-    #point = 0;
+    #point = 99; // ポイント
     #pointSprite = new Array(2); // 点数のスプライト
     #menuButtonSprite = null; // メニューに戻るボタンのスプライト
 
@@ -196,7 +196,7 @@ const Game = class {
         
         for(let i = 0; i < this.#pointSprite.length; i++) {
             this.#pointSprite[i] = new Sprite(screen);
-            this.#pointSprite[i].changeChar(6, 0, 1, 1);
+            this.#pointSprite[i].changeChar(15, 0, 1, 1);
             this.#pointSprite[i].setPosition(canvas.width - Sprite.charWidth * (i + 1), 0);
         }
     }
@@ -215,12 +215,10 @@ const Game = class {
             this.#menuButtonSprite.hitTest(pointer.x, pointer.y)
         ) return true;  // ゲームが終了したことを示す
 
-        this.#draw();
-
         return false;  // ゲームが終了していない
     }
 
-    #draw () {
+    draw () {
         this.#menuButtonSprite.draw();
         this.#pointSprite[0].draw();
         this.#pointSprite[1].draw();
@@ -258,7 +256,8 @@ const Kujibiki = class extends Game {
     #sprite = new Array(10); // くじのスプライト
     #sharkId = -1; // サメくじのインデックス
     #sharkFlag = false; // サメくじをすでに引いたかどうか
-    #drawCount = -1; // 描画したフレームをカウント
+    #time = 0; // スタートからの時間
+    #prevTime = 0; // 前回ポーリングの時間
 
     constructor (screen) {
         super(screen);
@@ -266,7 +265,10 @@ const Kujibiki = class extends Game {
         for(let i = 0; i < this.#sprite.length; i++) {
             this.#sprite[i] = new Sprite(screen);
             this.#sprite[i].changeChar(2, 0, 1, 1);
-            this.#sprite[i].setPosition(Sprite.charWidth * (1.5 + i % 5 * 2), Sprite.charHeight * (4.5 + Math.floor(i / 5) * 2));
+            this.#sprite[i].setPosition(
+                Sprite.charWidth * (0.5 + i % 5 * 2),
+                Sprite.charHeight * (3.5 + Math.floor(i / 5) * 2)
+            );
         }
     }
 
@@ -279,31 +281,34 @@ const Kujibiki = class extends Game {
 
         super.point = 10; // ポイントを初期化
 
-        this.#drawCount = -1;
+        this.#prevTime = 0; // 前回の時間を初期化
+        this.#time = 0; // 現在の時間を初期化
     }
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
         if(end) return super.point; // ゲームが終了したらポイントを返す
 
+        this.#prevTime = this.#time; // 前回の時間に代入
+        this.#time += deltaTime;
+
         this.#push(pointer);
-        this.#draw();
 
         return 100;  // ゲームが終了していないことを示す
     }
 
-    #draw () {
-        this.#drawCount++;
+    draw () {
+        super.draw();
 
         // サメくじのアニメーション
         if(
-            this.#drawCount % 30 !== 0 &&
+            Math.floor((this.#time * 2) % 2) !== Math.floor((this.#prevTime * 2) % 2) &&
             this.#sharkFlag
         ) {
             for(let i = 0; i < this.#sprite.length; i++) {
                 const s = this.#sprite[i];
                 if(i !== this.#sharkId) continue;
-                if(Math.floor(this.#drawCount / 30) % 2 === 0) {
+                if(Math.floor((this.#time * 2) % 2) === 0) {
                     s.changeChar(0, 0, 1, 1);
                 } else {
                     s.changeChar(1, 0, 1, 1);
@@ -336,13 +341,13 @@ const Kujibiki = class extends Game {
                 this.#sharkFlag = true;
 
                 // 最後に引いたかどうかで音の高さが違う
-                if(super.point !== 1) sound.play(16, 0.1, 16);
+                if(super.point !== 1) sound.play(16, 0.08, 16);
                 else sound.play(64, 0.4, 64);
             }
             // サメ以外を引いた
             else {
                 s.changeChar(3, 0, 1, 1);
-                sound.play(52, 0.05, 52);
+                sound.play(52, 0.05, 58);
             }
             this.addPoint(-1);
         }
@@ -352,25 +357,154 @@ const Kujibiki = class extends Game {
 // もぐらたたきのクラス
 const Mogura = class extends Game {
 
+    #sprite = new Array(9); // 穴のスプライト
+    #time = 0; // スタートからの時間
+    #prevTime = 0; // 前回ポーリングの時間
+    #order = [ // もぐらの出現順序
+        [
+            0, 0, 0,
+            0, 1, 0,
+            0, 0, 0,
+        ],
+        [
+            0, 0, 0,
+            1, 0, 1,
+            0, 0, 0,
+        ],
+        [
+            0, 1, 0,
+            0, 0, 0,
+            0, 1, 0,
+        ],
+        [
+            1, 0, 0,
+            0, 0, 0,
+            0, 0, 1,
+        ],
+        [
+            0, 0, 1,
+            0, 0, 0,
+            1, 0, 0,
+        ],
+        [
+            1, 0, 1,
+            0, 0, 0,
+            1, 0, 1,
+        ],
+        [
+            0, 0, 0,
+            1, 1, 1,
+            0, 0, 0,
+        ],
+        [
+            0, 1, 0,
+            0, 1, 0,
+            0, 1, 0,
+        ],
+        [
+            0, 1, 0,
+            1, 0, 1,
+            0, 1, 0,
+        ],
+        [
+            1, 0, 1,
+            0, 1, 0,
+            1, 0, 1,
+        ],
+        [
+            0, 0, 0,
+            0, 1, 0,
+            0, 0, 0,
+        ],
+        [
+            1, 1, 1,
+            1, 1, 1,
+            1, 1, 1,
+        ],
+    ]
+    #state = [
+        0, 0, 0,
+        0, 0, 0,
+        0, 0, 0,
+    ]
+
     constructor (screen) {
         super(screen);
+        
+        // 穴のスプライトを初期化
+        for(let i = 0; i < this.#sprite.length; i++) {
+            this.#sprite[i] = new Sprite(screen);
+            this.#sprite[i].changeChar(2, 1, 1, 1);
+            this.#sprite[i].setPosition(
+                Sprite.charWidth * (2.5 + i % 3 * 2),
+                Sprite.charHeight * (2.5 + Math.floor(i / 3) * 2)
+            );
+        }
     }
 
     start () {
         super.start();
+
+        super.point = 38; // ポイントを初期化
+
+        this.#state = [
+            0, 0, 0,
+            0, 0, 0,
+            0, 0, 0,
+        ]
     }
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
         if(end) return super.point;
 
+        // スタートからの経過時間
+        this.#prevTime = this.#time;
+        this.#time += deltaTime;
+
+        const len = this.#order.length;
+        const ft = Math.floor(this.#time / 4);
+        const fpt = Math.floor(this.#prevTime / 4)
+
+        // もぐらが出る瞬間の処理
+        if(ft !== fpt && 0 < ft && ft <= len) {
+            const phase = Math.floor(this.#time / 4 - 1)
+            this.#order[phase].forEach((v, i) => {
+                if(this.#order[phase][i] === 0) return; // もぐらが出ない場合は次の穴
+                this.#sprite[i].changeChar(0, 1, 1, 1); // 穴のスプライトを変更
+                this.#state[i] = 1; // 穴にいるもぐらの状態を1にする
+            });
+        }
+
+        // もぐらが残る時間と消える瞬間の処理
+        if(
+            Math.floor(this.#time % 4) === 3 &&
+            Math.floor(this.#prevTime % 4) !== 3
+        ) {
+            this.#sprite.forEach((v, i) => {
+                this.#sprite[i].changeChar(2, 1, 1, 1); // 穴のスプライトを元に戻す
+                this.#state[i] = 0; // もぐらの状態を0にする
+            });
+        }
+
+        // 終了時
+        if(ft > len && fpt <= len) {
+            if(super.point !== 0) sound.play(18, 0.4, 18); // 終了音を再生
+            else sound.play(66, 0.8, 66); // 全部叩いた音を再生
+        }
+
         this.#push(pointer);
-        this.#draw();
 
         return 100;
     }
 
-    #draw () {
+    draw () {
+        super.draw();
+
+        // もぐらの残り時間を初期化
+        for(let i = 0; i < this.#sprite.length; i++) {
+            this.#sprite[i].draw();
+        }
     }
 
     #push (pointer) {
@@ -378,6 +512,20 @@ const Mogura = class extends Game {
             pointer.down !== 1 ||
             pointer.count !== 0
         ) return;
+
+        // もぐらを叩いたら変化させる
+        this.#sprite.forEach((s, i) => {
+            if(this.#state[i] !== 1) return; // もぐらがいない場合は次へ
+            if(!s.hitTest(pointer.x, pointer.y)) return; // 叩いていない穴は次へ
+
+            this.#state[i] = 2; // 叩かれたもぐらの状態を2にする
+
+            s.changeChar(1, 1, 1, 1); // 叩かれたもぐらのスプライトを変化させる
+
+            this.addPoint(-1);
+
+            sound.play(42, 0.05, 30); // 叩いた音を再生
+        });
     }
 }
 
@@ -398,12 +546,12 @@ const Souko = class extends Game {
 
 
         this.#push(pointer);
-        this.#draw();
 
         return 100;
     }
 
-    #draw () {
+    draw () {
+        super.draw();
     }
 
     #push (pointer) {
@@ -431,12 +579,12 @@ const Ball = class extends Game {
 
 
         this.#push(pointer);
-        this.#draw();
 
         return 100;
     }
 
-    #draw () {
+    draw () {
+        super.draw();
     }
 
     #push (pointer) {
@@ -464,12 +612,12 @@ const Doteat = class extends Game {
 
 
         this.#push(pointer);
-        this.#draw();
 
         return 100;
     }
 
-    #draw () {
+    draw () {
+        super.draw();
     }
 
     #push (pointer) {
@@ -497,12 +645,12 @@ const Shooting = class extends Game {
 
 
         this.#push(pointer);
-        this.#draw();
 
         return 100;
     }
 
-    #draw () {
+    draw () {
+        super.draw();
     }
 
     #push (pointer) {
@@ -530,12 +678,12 @@ const Jump = class extends Game {
 
 
         this.#push(pointer);
-        this.#draw();
 
         return 100;
     }
 
-    #draw () {
+    draw () {
+        super.draw();
     }
 
     #push (pointer) {
@@ -614,7 +762,7 @@ const Dream = class {
         const ch = Sprite.charHeight;
 
         // スプライトの位置を設定
-        this.#titleSprite.setPosition(1.5 * cw, 5 * ch);
+        this.#titleSprite.setPosition(0.5 * cw, 4.5 * ch);
         for(let i = 0; i < this.#menuArray.length; i++) {
             this.#menuSprite[this.#menuArray[i]].setPosition(0, (i + 2) * ch);
         }
@@ -700,12 +848,19 @@ const Dream = class {
             
             // 終了音
             const note = this.#menuNote[this.#gameId];
-            sound.play(note, 0.05, note - 12);
+            sound.play(note + 12, 0.05, note);
 
             this.#gameId = -1;
             this.#gameName = '';
             this.#game = null;
         }
+    }
+
+    // ゲームを描画
+    #drawGame () {
+        if(this.#game === null) return;
+        
+        this.#game.draw(); // ゲームの描画
     }
 
     #updatePoint(gameName, point) {
@@ -719,7 +874,6 @@ const Dream = class {
 
     #frame (timestamp) {
         requestAnimationFrame(this.#frame.bind(this));
-        this.#prevTimestamp = timestamp;
         const deltaTime = (timestamp - this.#prevTimestamp) / 1000;
         
         const p = this.#pointer.poll(); // ポインターの状態を取得
@@ -734,6 +888,9 @@ const Dream = class {
         this.#drawTitle(); // タイトルのスプライト描画
         
         this.#pollGame(deltaTime, p); // ゲームの実行
+        this.#drawGame(); // ゲームの描画
+
+        this.#prevTimestamp = timestamp;
     }
 }
 const dream = new Dream(screen, pointer);
@@ -744,9 +901,11 @@ dream.start();
 
 // キャンバスの押下
 canvas.addEventListener('mousedown', (e) => {
+    sound.start();
     pointer.update(e.clientX, e.clientY, 1);
 });
 canvas.addEventListener('touchstart', (e) => {
+    sound.start();
     pointer.update(e.touches[0].clientX, e.touches[0].clientY, 1);
 });
 // キャンバス上のポインター移動
@@ -759,11 +918,9 @@ canvas.addEventListener('touchmove', (e) => {
 // キャンバスの押下終了
 canvas.addEventListener('mouseup', (e) => {
     pointer.update(e.clientX, e.clientY, -1);
-    sound.start();
 });
 canvas.addEventListener('touchend', (e) => {
     pointer.update(0, 0, -1);
-    sound.start();
 });
 
 // キャンバス以外は押しても無効
@@ -778,6 +935,7 @@ body.addEventListener('touchstart', stopEvent, { passive: false })
 body.addEventListener('touchmove', stopEvent, { passive: false })
 body.addEventListener('touchend', stopEvent, { passive: false })
 body.addEventListener('click', stopEvent, { passive: false });
+body.addEventListener('contextmenu', stopEvent, { passive: false });
 
 // 画面がブラウザに復帰した
 document.addEventListener('visibilitychange', (e) => {
