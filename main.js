@@ -40,50 +40,6 @@ const Screen = class {
 const screen = new Screen(canvas);
 
 
-
-const Sprite = class {
-
-    static charWidth = 16;
-    static charHeight = 16;
-    #screen = null;
-    #cx;
-    #cy;
-    #cw;
-    #ch;
-    #x;
-    #y;
-
-    constructor (screen) {
-        this.#screen = screen;
-    }
-
-    changeChar (cx, cy, cw, ch) {
-        this.#cx = cx;
-        this.#cy = cy;
-        this.#cw = cw;
-        this.#ch = ch;
-    }
-
-    setPosition (x, y) {
-        this.#x = x;
-        this.#y = y;
-    }
-
-    draw () {
-        this.#screen.drawChar(this.#cx, this.#cy, this.#cw, this.#ch, this.#x, this.#y);
-    }
-
-    hitTest (px, py) {
-        return (
-            this.#x <= px &&
-            px < this.#x + this.#cw * Sprite.charWidth &&
-            this.#y <= py &&
-            py < this.#y + this.#ch * Sprite.charHeight
-        );
-    }
-}
-
-
 // マウスとタッチのポインター情報を管理するクラス
 const Pointer = class {
 
@@ -181,6 +137,74 @@ const sound = new Sound();
 
 
 
+// ゲームのスプライトのクラス
+const Sprite = class {
+
+    static charWidth = 16;
+    static charHeight = 16;
+    #screen = null;
+    #cx;
+    #cy;
+    #cw;
+    #ch;
+    #x;
+    #y;
+
+    constructor (screen) {
+        this.#screen = screen;
+    }
+
+    changeChar (cx, cy, cw, ch) {
+        this.#cx = cx;
+        this.#cy = cy;
+        this.#cw = cw;
+        this.#ch = ch;
+    }
+
+    setPosition (x, y) {
+        this.#x = x;
+        this.#y = y;
+    }
+
+    addPosition (dx, dy) {
+        this.#x += dx;
+        this.#y += dy;
+    }
+
+    draw () {
+        this.#screen.drawChar(this.#cx, this.#cy, this.#cw, this.#ch, this.#x, this.#y);
+    }
+
+    hitTest (px, py) {
+        return (
+            this.#x <= px &&
+            px < this.#x + this.#cw * Sprite.charWidth &&
+            this.#y <= py &&
+            py < this.#y + this.#ch * Sprite.charHeight
+        );
+    }
+
+    get x () {
+        return this.#x;
+    }
+    get y () {
+        return this.#y;
+    }
+    get cx () {
+        return this.#cx;
+    }
+    get cy () {
+        return this.#cy;
+    }
+    get cw () {
+        return this.#cw;
+    }
+    get ch () {
+        return this.#ch;
+    }
+}
+
+
 
 // すべてのゲームのスーパークラス
 const Game = class {
@@ -246,14 +270,23 @@ const Game = class {
     // ポイントを加算する
     addPoint (point) {
         this.#point += point;
+        if(this.#point < 0) this.#point = 0;
+        if(this.#point >= 100) this.#point = 99;
         this.#updatePointSprite();
+    }
+
+    // ポイントを中央に表示する
+    centerPoint () {
+        for(let i = 0; i < this.#pointSprite.length; i++) {
+            this.#pointSprite[i].setPosition((4 - i) * Sprite.charWidth, 3.5 * Sprite.charHeight);
+        }
     }
 }
 
 // くじびきのクラス
 const Kujibiki = class extends Game {
 
-    #sprite = new Array(10); // くじのスプライト
+    #sprite = new Array(8); // くじのスプライト
     #sharkId = -1; // サメくじのインデックス
     #sharkFlag = false; // サメくじをすでに引いたかどうか
     #time = 0; // スタートからの時間
@@ -266,8 +299,8 @@ const Kujibiki = class extends Game {
             this.#sprite[i] = new Sprite(screen);
             this.#sprite[i].changeChar(2, 0, 1, 1);
             this.#sprite[i].setPosition(
-                Sprite.charWidth * (0.5 + i % 5 * 2),
-                Sprite.charHeight * (3.5 + Math.floor(i / 5) * 2)
+                Sprite.charWidth * (0.5 + i % 4 * 2),
+                Sprite.charHeight * (2.5 + Math.floor(i / 4) * 2)
             );
         }
     }
@@ -279,7 +312,7 @@ const Kujibiki = class extends Game {
         this.#sharkId = Math.floor(Math.random() * this.#sprite.length);
         this.#sharkFlag = false;
 
-        super.point = 10; // ポイントを初期化
+        super.point = 8; // ポイントを初期化
 
         this.#prevTime = 0; // 前回の時間を初期化
         this.#time = 0; // 現在の時間を初期化
@@ -360,6 +393,8 @@ const Mogura = class extends Game {
     #sprite = new Array(9); // 穴のスプライト
     #time = 0; // スタートからの時間
     #prevTime = 0; // 前回ポーリングの時間
+    #resultFlag = false; // 結果が出たかどうか
+    #second = 5; // もぐらが出る秒間隔
     #order = [ // もぐらの出現順序
         [
             0, 0, 0,
@@ -436,8 +471,8 @@ const Mogura = class extends Game {
             this.#sprite[i] = new Sprite(screen);
             this.#sprite[i].changeChar(2, 1, 1, 1);
             this.#sprite[i].setPosition(
-                Sprite.charWidth * (2.5 + i % 3 * 2),
-                Sprite.charHeight * (2.5 + Math.floor(i / 3) * 2)
+                Sprite.charWidth * (1.5 + i % 3 * 2),
+                Sprite.charHeight * (1.5 + Math.floor(i / 3) * 2)
             );
         }
     }
@@ -463,12 +498,12 @@ const Mogura = class extends Game {
         this.#time += deltaTime;
 
         const len = this.#order.length;
-        const ft = Math.floor(this.#time / 4);
-        const fpt = Math.floor(this.#prevTime / 4)
+        const ft = Math.floor(this.#time / this.#second);
+        const fpt = Math.floor(this.#prevTime / this.#second)
 
         // もぐらが出る瞬間の処理
         if(ft !== fpt && 0 < ft && ft <= len) {
-            const phase = Math.floor(this.#time / 4 - 1)
+            const phase = Math.floor(this.#time / this.#second - 1)
             this.#order[phase].forEach((v, i) => {
                 if(this.#order[phase][i] === 0) return; // もぐらが出ない場合は次の穴
                 this.#sprite[i].changeChar(0, 1, 1, 1); // 穴のスプライトを変更
@@ -478,8 +513,8 @@ const Mogura = class extends Game {
 
         // もぐらが残る時間と消える瞬間の処理
         if(
-            Math.floor(this.#time % 4) === 3 &&
-            Math.floor(this.#prevTime % 4) !== 3
+            Math.floor(this.#time % this.#second) === this.#second - 1 &&
+            Math.floor(this.#prevTime % this.#second) !== this.#second - 1
         ) {
             this.#sprite.forEach((v, i) => {
                 this.#sprite[i].changeChar(2, 1, 1, 1); // 穴のスプライトを元に戻す
@@ -489,8 +524,10 @@ const Mogura = class extends Game {
 
         // 終了時
         if(ft > len && fpt <= len) {
-            if(super.point !== 0) sound.play(18, 0.4, 18); // 終了音を再生
-            else sound.play(66, 0.8, 66); // 全部叩いた音を再生
+            if(super.point !== 0) sound.play(18, 0.4, 18); // もぐらを残して終了した音を再生
+            else sound.play(66, 0.8, 66); // 全部叩いた場合の音を再生
+            this.#resultFlag = true; // 結果が出たフラグを立てる
+            super.centerPoint(); // ポイントを中央に表示
         }
 
         this.#push(pointer);
@@ -501,7 +538,8 @@ const Mogura = class extends Game {
     draw () {
         super.draw();
 
-        // もぐらの残り時間を初期化
+        // 終了していなければ穴やもぐらを描画
+        if(this.#resultFlag) return;
         for(let i = 0; i < this.#sprite.length; i++) {
             this.#sprite[i].draw();
         }
@@ -529,36 +567,295 @@ const Mogura = class extends Game {
     }
 }
 
-// 倉庫脱出のクラス
+// 倉庫のクラス
 const Souko = class extends Game {
+
+    #playerSprite = null; // プレイヤーのスプライト
+    #stageWidth = 8;
+    #stageHeight = 7;
+    #stage = [
+        [
+            [0, 0, 0, 3, 3, 2, 3, 3,],
+            [0, 0, 0, 3, 0, 0, 0, 3,],
+            [3, 3, 3, 3, 1, 1, 1, 3,],
+            [3, 0, 0, 0, 0, 0, 0, 3,],
+            [3, 1, 1, 0, 0, 0, 0, 3,],
+            [3, 9, 1, 0, 3, 3, 3, 3,],
+            [3, 3, 3, 3, 3, 0, 0, 0,],
+        ],
+        [
+            [0, 3, 3, 3, 3, 3, 3, 0,],
+            [0, 3, 0, 0, 0, 9, 3, 0,],
+            [3, 3, 1, 1, 1, 1, 3, 3,],
+            [3, 0, 0, 0, 0, 0, 0, 3,],
+            [3, 3, 1, 1, 1, 3, 3, 3,],
+            [0, 3, 0, 0, 0, 0, 0, 3,],
+            [0, 3, 3, 3, 3, 2, 3, 0,],
+        ],
+        [
+            [3, 3, 3, 3, 3, 3, 3, 3,],
+            [3, 9, 0, 1, 0, 1, 0, 3,],
+            [3, 0, 0, 1, 1, 0, 3, 3,],
+            [3, 1, 1, 1, 0, 1, 0, 2,],
+            [3, 0, 0, 1, 0, 0, 3, 3,],
+            [3, 0, 1, 0, 1, 0, 0, 3,],
+            [3, 3, 3, 3, 3, 3, 3, 3,],
+        ],
+    ] // ブロックの初期状態
+    #currentStage = 0; // 現在のステージ
+    #blockSprite = new Array(this.#stage.length);
+    #time = 0; // スタートからの時間
+    #goalWait = 0; // ゴール時の待ち時間
 
     constructor (screen) {
         super(screen);
+
+        // スプライトの初期化
+        this.#playerSprite = new Sprite(screen);
+        for(var y = 0; y < this.#stageHeight; y++) {
+            this.#blockSprite[y] = new Array(this.#stageWidth);
+            for(var x = 0; x < this.#stageWidth; x++) {
+                this.#blockSprite[y][x] = new Sprite(screen);
+            }
+        }
     }
 
     start () {
         super.start();
+
+        super.point = 0;
+        this.#time = 0;
+
+        this.#playerSprite.changeChar(0, 2, 1, 1);
+        for(var y = 0; y < 7; y++) {
+            for(var x = 0; x < 8; x++) {
+                this.#blockSprite[y][x].setPosition(x * Sprite.charWidth, (1 + y) * Sprite.charHeight);
+            }
+        }
+        this.#startStage();
+    }
+
+    #startStage () {
+        // 最後のステージをクリアしていた場合
+        if(this.#currentStage >= this.#stage.length) {
+            sound.play(80, 1, 80)
+            return;
+        }
+
+        // プレイヤーに正面を向かせる
+        this.#playerSprite.changeChar(0, 2, 1, 1);
+
+        // 床のキャラ番号
+        const fcx = 5;
+
+        // ブロックの位置を初期化
+        for(var y = 0; y < 7; y++) {
+            for(var x = 0; x < 8; x++) {
+                // プレイヤー以外
+                if(this.#stage[this.#currentStage][y][x] !== 9) {
+                    this.#blockSprite[y][x].changeChar(fcx + this.#stage[this.#currentStage][y][x] * 2, 2, 1, 1);
+                }
+                // プレイヤー
+                else {
+                    this.#playerSprite.setPosition(x * Sprite.charWidth, (y + 1) * Sprite.charHeight);
+                    this.#blockSprite[y][x].changeChar(fcx, 2, 1, 1);
+                }
+            }
+        }
+
+        // 押せる動きマークを付ける
+        const cx = this.#playerSprite.x / Sprite.charWidth;
+        const cy = this.#playerSprite.y / Sprite.charHeight - 1;
+        const a = [
+            [0, 1],
+            [0, -1],
+            [-1, 0],
+            [1, 0],
+        ]
+        for(let i = 0; i < a.length; i++) {
+            const s = this.#blockSprite[cy + a[i][1]][cx + a[i][0]];
+            let sy = cy + a[i][1] * 2;
+            let sx = cx + a[i][0] * 2;
+            let ss = null; // 押した先のブロック
+            if(0 <= sy && sy < this.#stageHeight && 0 <= sx && sx < this.#stageWidth)
+                ss = this.#blockSprite[sy][sx];
+            if(s.cx === 0 + fcx) s.changeChar(1 + fcx, 2, 1, 1);
+            if(s.cx === 2 + fcx && ss !== null && ss.cx === 0 + fcx) s.changeChar(3 + fcx, 2, 1, 1);
+        }
+    }
+
+    #movePlayer (dx, dy) {
+        const x = this.#playerSprite.x / Sprite.charWidth;
+        const y = this.#playerSprite.y / Sprite.charHeight - 1;
+        const nx = x + dx;
+        const ny = y + dy;
+
+        const a = [
+            [0, 1],
+            [0, -1],
+            [-1, 0],
+            [1, 0],
+        ]
+
+        const fcx = 5;
+
+        // 動かす前の押せる動きマークを消す
+        for(let i = 0; i < a.length; i++) {
+            const s = this.#blockSprite[y + a[i][1]][x + a[i][0]];
+            if(s.cx === 1 + fcx) s.changeChar(0 + fcx, 2, 1, 1);
+            if(s.cx === 3 + fcx) s.changeChar(2 + fcx, 2, 1, 1);
+            if(s.cx === 5 + fcx) s.changeChar(4 + fcx, 2, 1, 1);
+        }
+
+        // プレイヤーを動かす
+        this.#playerSprite.setPosition(nx * Sprite.charWidth, (ny + 1) * Sprite.charHeight);
+        if(dx === 0 && dy === 1) this.#playerSprite.changeChar(0, 2, 1, 1);
+        if(dx === 0 && dy === -1) this.#playerSprite.changeChar(1, 2, 1, 1);
+        if(dx === -1 && dy === 0) this.#playerSprite.changeChar(2, 2, 1, 1);
+        if(dx === 1 && dy === 0) this.#playerSprite.changeChar(3, 2, 1, 1);
+
+        // ブロックを押す
+        const ds = this.#blockSprite[y + dy][x + dx];
+        let dss = null; // 押した先のブロック
+        let sy = ny + dy;
+        let sx = nx + dx;
+        if(
+            0 <= sy && sy < this.#stageHeight &&
+            0 <= sx && sx < this.#stageWidth
+        ) dss = this.#blockSprite[sy][sx];
+        if(ds.cx === 2 + fcx && dss !== null && dss.cx === 0 + fcx) {
+            ds.changeChar(0 + fcx, 2, 1, 1);
+            dss.changeChar(2 + fcx, 2, 1, 1);
+        }
+
+        // ゴールしたらそこでメソッドを終了
+        const gs = this.#blockSprite[y + dy][x + dx];
+        if(gs.cx === 4 + fcx) return;
+
+        // 動かした後の押せる動きマークを付ける
+        for(let i = 0; i < a.length; i++) {
+            const s = this.#blockSprite[ny + a[i][1]][nx + a[i][0]];
+
+            // 床
+            if(s.cx === 0 + fcx) {
+                s.changeChar(1 + fcx, 2, 1, 1);
+                continue;
+            }
+
+            // 押せるブロック
+            let ss = null; // 押した先のブロック
+            let sy = ny + a[i][1] * 2;
+            let sx = nx + a[i][0] * 2;
+            if(
+                0 <= sy && sy < this.#stageHeight &&
+                0 <= sx && sx < this.#stageWidth
+            ) ss = this.#blockSprite[sy][sx];
+            if(s.cx === 2 + fcx && ss !== null && ss.cx === 0 + fcx) {
+                s.changeChar(3 + fcx, 2, 1, 1);
+                continue;
+            }
+
+            // ゴール
+            if(s.cx === 4 + fcx) {
+                s.changeChar(5 + fcx, 2, 1, 1);
+                continue;
+            }
+        }
     }
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
         if(end) return super.point;
 
+        if(this.#goal(deltaTime)) return 100;
 
         this.#push(pointer);
+        this.#time += deltaTime;
 
         return 100;
     }
 
-    draw () {
-        super.draw();
+    #goal (deltaTime) {
+        if(this.#goalWait <= 0) return false;
+    
+        // 次のステージへ
+        this.#goalWait -= deltaTime;
+        if(this.#goalWait <= 0) {
+            this.#currentStage++;
+            this.#startStage();
+            this.#goalWait = 0;
+        }
+
+        return true;
     }
 
     #push (pointer) {
         if(
-            pointer.down !== 1 ||
-            pointer.count !== 0
+            pointer.down !== 1
         ) return;
+
+        const p = this.#playerSprite;
+        const px = p.x / Sprite.charWidth;
+        const py = p.y / Sprite.charHeight - 1;
+
+        // 豚を押した場合
+        if(p.hitTest(pointer.x, pointer.y) && pointer.count === 0) {
+            sound.play(20, 0.05, 16); // 鳴く音を再生
+            return;
+        }
+
+        if(this.#goalWait !== 0 || this.#currentStage >= this.#stage.length) return;
+
+        for(let y = 0; y < this.#stageHeight; y++) {
+            for(let x = 0; x < this.#stageWidth; x++) {
+                const s = this.#blockSprite[y][x];
+                if(!s.hitTest(pointer.x, pointer.y)) continue; // ブロックを押していない場合は次へ
+
+                const dx = x - px;
+                const dy = y - py;
+                let sy = y + dy;
+                let sx = x + dx;
+                if(sy < 0 || this.#stageHeight <= sy) sy = 0;
+                if(sx < 0 || this.#stageWidth <= sx) sx = 0;
+                const ss = this.#blockSprite[sy][sx]; // 押した先のブロック
+
+                // 動ける床を押した場合
+                if(s.cx === 6) {
+                    this.#movePlayer(dx, dy); // プレイヤーを動かす
+                    sound.play(32, 0.05, 32); // ブロックを動かす音を再生
+                }
+                // 押せるブロックを押した場合
+                else if(s.cx === 8 && pointer.count === 0) {
+                    this.#movePlayer(dx, dy); // プレイヤーを動かす
+                    super.addPoint(1);
+                    sound.play(44, 0.05, 44); // 歩く音を再生
+                }
+                // ゴールした場合
+                else if(s.cx === 10) {
+                    this.#movePlayer(dx, dy); // プレイヤーを動かす
+                    this.#playerSprite.changeChar(4, 2, 1, 1);
+                    this.#goalWait = 1;
+                    sound.play(44, 0.1, 68); // ゴール音を再生
+                }
+                // 押せない壁を押した場合
+                else if((s.cx === 7 || s.cx === 11) && pointer.count === 0) {
+                    sound.play(8, 0.05, 8); // 押せない音を再生
+                }
+                else if(pointer.count === 0) {
+                    sound.play(20, 0.05, 20); // とにかく歩けない音を再生
+                }
+            }
+        }
+    }
+
+    draw () {
+        super.draw();
+        for(var y = 0; y < 7; y++) {
+            for(var x = 0; x < 8; x++) {
+                this.#blockSprite[y][x].draw();
+            }
+        }
+        this.#playerSprite.draw();
     }
 }
 
@@ -583,15 +880,15 @@ const Ball = class extends Game {
         return 100;
     }
 
-    draw () {
-        super.draw();
-    }
-
     #push (pointer) {
         if(
             pointer.down !== 1 ||
             pointer.count !== 0
         ) return;
+    }
+
+    draw () {
+        super.draw();
     }
 }
 
@@ -616,15 +913,15 @@ const Doteat = class extends Game {
         return 100;
     }
 
-    draw () {
-        super.draw();
-    }
-
     #push (pointer) {
         if(
             pointer.down !== 1 ||
             pointer.count !== 0
         ) return;
+    }
+
+    draw () {
+        super.draw();
     }
 }
 
@@ -649,15 +946,15 @@ const Shooting = class extends Game {
         return 100;
     }
 
-    draw () {
-        super.draw();
-    }
-
     #push (pointer) {
         if(
             pointer.down !== 1 ||
             pointer.count !== 0
         ) return;
+    }
+
+    draw () {
+        super.draw();
     }
 }
 
@@ -682,15 +979,15 @@ const Jump = class extends Game {
         return 100;
     }
 
-    draw () {
-        super.draw();
-    }
-
     #push (pointer) {
         if(
             pointer.down !== 1 ||
             pointer.count !== 0
         ) return;
+    }
+
+    draw () {
+        super.draw();
     }
 }
 
@@ -719,13 +1016,13 @@ const Dream = class {
         'jump',
     ];
     #menuNote = [
-        60,
-        62,
         64,
-        65,
-        67,
+        66,
+        68,
         69,
         71,
+        73,
+        75,
     ];
     #menuPointSprite = {};
 
@@ -752,9 +1049,9 @@ const Dream = class {
         this.#isTitle = true;
 
         // スプライトのキャラを設定
-        this.#titleSprite.changeChar(0, 7, 16, 1);
+        this.#titleSprite.changeChar(0, 8, 8, 1);
         for(let i = 0; i < this.#menuArray.length; i++) {
-            this.#menuSprite[this.#menuArray[i]].changeChar(0, 8 + i, 15, 1);
+            this.#menuSprite[this.#menuArray[i]].changeChar(0, 9 + i, 8, 1);
         }
 
         // キャラの幅と高さを取得
@@ -762,9 +1059,9 @@ const Dream = class {
         const ch = Sprite.charHeight;
 
         // スプライトの位置を設定
-        this.#titleSprite.setPosition(0.5 * cw, 4.5 * ch);
+        this.#titleSprite.setPosition(0.5 * cw, 3.5 * ch);
         for(let i = 0; i < this.#menuArray.length; i++) {
-            this.#menuSprite[this.#menuArray[i]].setPosition(0, (i + 2) * ch);
+            this.#menuSprite[this.#menuArray[i]].setPosition(0, (i + 1) * ch);
         }
 
         // ポイントの初期化
@@ -772,8 +1069,8 @@ const Dream = class {
             this.#menuPoint[this.#menuArray[i]] = 100;
             this.#menuPointSprite[this.#menuArray[i]][0].changeChar(6, 1, 1, 1);
             this.#menuPointSprite[this.#menuArray[i]][1].changeChar(6, 1, 1, 1);
-            this.#menuPointSprite[this.#menuArray[i]][0].setPosition(canvas.width - cw, (i + 2) * ch);
-            this.#menuPointSprite[this.#menuArray[i]][1].setPosition(canvas.height - cw * 2, (i + 2) * ch);
+            this.#menuPointSprite[this.#menuArray[i]][0].setPosition(canvas.width - cw, (i + 1) * ch);
+            this.#menuPointSprite[this.#menuArray[i]][1].setPosition(canvas.height - cw * 2, (i + 1) * ch);
         }
 
         this.#gameId = -1;
@@ -811,7 +1108,7 @@ const Dream = class {
             this.#game = new this.#menuClass[m](this.#screen);
             this.#game.start();
             const note = this.#menuNote[i];
-            sound.play(note, 0.05, note + 12); // メニュー選択音を再生
+            sound.play(note, 0.05, note); // メニュー選択音を再生
         }
     }
 
@@ -842,18 +1139,7 @@ const Dream = class {
         if(this.#game === null) return;
         const point = this.#game.poll(deltaTime, pointer);
 
-        // ゲームが終了
-        if(point < 100) {
-            this.#updatePoint(this.#gameName, point); // ポイントを更新
-            
-            // 終了音
-            const note = this.#menuNote[this.#gameId];
-            sound.play(note + 12, 0.05, note);
-
-            this.#gameId = -1;
-            this.#gameName = '';
-            this.#game = null;
-        }
+        this.#endGame(point); // ゲームが終了したか判定
     }
 
     // ゲームを描画
@@ -861,6 +1147,19 @@ const Dream = class {
         if(this.#game === null) return;
         
         this.#game.draw(); // ゲームの描画
+    }
+
+    #endGame(point) {
+        if(point >= 100) return; // ゲームが終了していない
+        this.#updatePoint(this.#gameName, point); // ポイントを更新
+        
+        // 終了音
+        const note = this.#menuNote[this.#gameId];
+        sound.play(note - 12, 0.05, note - 12);
+
+        this.#gameId = -1;
+        this.#gameName = '';
+        this.#game = null;
     }
 
     #updatePoint(gameName, point) {
