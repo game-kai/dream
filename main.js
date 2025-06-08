@@ -320,7 +320,8 @@ const Kujibiki = class extends Game {
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
-        if(end) return super.point; // ゲームが終了したらポイントを返す
+        if(end && this.#sharkFlag) return super.point; // ゲームが終了したらポイントを返す
+        if(end) return -1; // ゲームを中断したらポイントは返さない
 
         this.#prevTime = this.#time; // 前回の時間に代入
         this.#time += deltaTime;
@@ -491,7 +492,8 @@ const Mogura = class extends Game {
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
-        if(end) return super.point;
+        if(end && this.#resultFlag) return super.point;
+        if(end) return -1;
 
         // スタートからの経過時間
         this.#prevTime = this.#time;
@@ -765,7 +767,8 @@ const Souko = class extends Game {
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
-        if(end) return super.point;
+        if(end && this.#currentStage === this.#stage.length) return super.point;
+        else if(end) return -1;
 
         if(this.#goal(deltaTime)) return 100;
 
@@ -801,7 +804,7 @@ const Souko = class extends Game {
 
         // 豚を押した場合
         if(p.hitTest(pointer.x, pointer.y) && pointer.count === 0) {
-            sound.play(20, 0.05, 16); // 鳴く音を再生
+            sound.play(32, 0.08, 20); // 鳴く音を再生
             return;
         }
 
@@ -863,6 +866,8 @@ const Souko = class extends Game {
 // ブロック崩しのクラス
 const Ball = class extends Game {
 
+    #resultFlag = false;
+
     constructor (screen) {
         super(screen);
     }
@@ -873,7 +878,8 @@ const Ball = class extends Game {
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
-        if(end) return super.point;
+        if(end && this.#resultFlag) return super.point;
+        if(end) return -1;
 
 
         this.#push(pointer);
@@ -896,6 +902,8 @@ const Ball = class extends Game {
 // ドットイートのクラス
 const Doteat = class extends Game {
 
+    #resultFlag = false;
+
     constructor (screen) {
         super(screen);
     }
@@ -906,6 +914,7 @@ const Doteat = class extends Game {
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
+        if(end && this.#resultFlag) return super.point;
         if(end) return super.point;
 
 
@@ -928,6 +937,8 @@ const Doteat = class extends Game {
 
 // シューティングのクラス
 const Shooting = class extends Game {
+    
+    #resultFlag = false;
 
     constructor (screen) {
         super(screen);
@@ -939,6 +950,7 @@ const Shooting = class extends Game {
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
+        if(end && this.#resultFlag) return super.point;
         if(end) return super.point;
 
 
@@ -961,6 +973,8 @@ const Shooting = class extends Game {
 
 // ジャンプのクラス
 const Jump = class extends Game {
+    
+    #resultFlag = false;
 
     constructor (screen) {
         super(screen);
@@ -972,6 +986,7 @@ const Jump = class extends Game {
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
+        if(end && this.#resultFlag) return super.point;
         if(end) return super.point;
 
 
@@ -1164,7 +1179,7 @@ const Dream = class {
     }
 
     #updatePoint(gameName, point) {
-        if(this.#menuPoint[gameName] <= point) return;
+        if(point < 0 || this.#menuPoint[gameName] <= point) return;
         this.#menuPoint[gameName] = point;
         const digit1 = point % 10;
         const digit10 = Math.floor(point / 10) % 10;
