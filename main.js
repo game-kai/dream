@@ -589,8 +589,8 @@ const Souko = class extends Game {
             [3, 3, 1, 1, 1, 1, 3, 3,],
             [3, 0, 0, 0, 0, 0, 0, 3,],
             [3, 3, 1, 1, 1, 3, 3, 3,],
-            [0, 3, 0, 0, 0, 0, 0, 3,],
-            [0, 3, 3, 3, 3, 2, 3, 0,],
+            [3, 0, 0, 0, 0, 0, 0, 3,],
+            [3, 3, 3, 3, 3, 2, 3, 0,],
         ],
         [
             [3, 3, 3, 3, 3, 3, 3, 3,],
@@ -791,7 +791,8 @@ const Souko = class extends Game {
 
     #push (pointer) {
         if(
-            pointer.down !== 1
+            pointer.down !== 1 ||
+            this.#time === 0
         ) return;
 
         const p = this.#playerSprite;
