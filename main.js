@@ -5,12 +5,14 @@ const body = document.body;
 const canvas = document.querySelector('#canvas');
 
 
-
+// 画面のクラス
 const Screen = class {
 
     #canvas;
     #context;
     #image;
+    static charLengthX = 8;
+    static charLengthY = 8;
 
     constructor (canvas) {
         this.#canvas = canvas
@@ -46,6 +48,8 @@ const Pointer = class {
     #canvas = null;
     #x = 0;
     #y = 0;
+    #prevX = 0;
+    #prevY = 0;
     #down = -1;
     #count = -1;
 
@@ -60,6 +64,9 @@ const Pointer = class {
         const top = rect.top;
         const width = rect.width;
         const height = rect.height;
+
+        this.#prevX = this.#x
+        this.#prevY = this.#y
 
         this.#x = Math.floor((x - left) / width * this.#canvas.width);
         this.#y = Math.floor((y - top) / height * this.#canvas.height);
@@ -77,6 +84,8 @@ const Pointer = class {
         return {
             x: this.#x,
             y: this.#y,
+            prevX: this.#prevX,
+            prevY: this.#prevY,
             down: this.#down,
             count: this.#count,
         };
@@ -662,66 +671,6 @@ const Souko = class extends Game {
                 }
             }
         }
-
-        const x = this.#playerSprite.x / Sprite.charWidth;
-        const y = this.#playerSprite.y / Sprite.charHeight - 1;
-        this.#showMark(x, y);
-    }
-
-    // 押せる動きマークを付ける
-    #showMark (x, y) {
-        const a = [
-            [0, 1],
-            [0, -1],
-            [-1, 0],
-            [1, 0],
-        ]
-        // 動かした後の押せる動きのマークを付ける
-        for(let i = 0; i < a.length; i++) {
-            let movableFlag = false;
-            const s = this.#blockSprite[y + a[i][1]][x + a[i][0]]; // 歩く先のブロック
-            const ns = this.#blockSprite[y - a[i][1]][x - a[i][0]]; // 反対のタッチできるブロック
-
-            // 床
-            if(s.cx === 5 || s.cx === 6) {
-                movableFlag = true;
-            }
-
-            // 押せるブロック
-            let ss = null; // 押した先のブロック
-            let sx = x + a[i][0] * 2;
-            let sy = y + a[i][1] * 2;
-            if(
-                0 <= sx && sx < this.#stageWidth &&
-                0 <= sy && sy < this.#stageHeight
-            ) ss = this.#blockSprite[sy][sx];
-            if((s.cx === 7 || s.cx === 8) && ss !== null && ss.cx === 5) {
-                movableFlag = true;
-            }
-
-            // ゴール
-            if(s.cx === 9 || s.cx === 10) {
-                movableFlag = true;
-            }
-
-            // 移動可能なら反対側にマーク
-            if(movableFlag) ns.changeChar(ns.cx + 1, 2, 1, 1);
-        }
-    }
-
-    // 押せる動きマークを消す
-    #hideMark (x, y) {
-        const a = [
-            [0, 1],
-            [0, -1],
-            [-1, 0],
-            [1, 0],
-        ]
-
-        for(let i = 0; i < a.length; i++) {
-            const s = this.#blockSprite[y + a[i][1]][x + a[i][0]];
-            if(s.cx % 2 === 0)  s.changeChar(s.cx - 1, 2, 1, 1);
-        }
     }
 
     #movePlayer (dx, dy) {
@@ -729,8 +678,6 @@ const Souko = class extends Game {
         const y = this.#playerSprite.y / Sprite.charHeight - 1;
         const nx = x + dx;
         const ny = y + dy;
-
-        this.#hideMark(x, y);
 
         // プレイヤーを動かす
         this.#playerSprite.setPosition(nx * Sprite.charWidth, (ny + 1) * Sprite.charHeight);
@@ -756,8 +703,6 @@ const Souko = class extends Game {
         // ゴールしたらそこでメソッドを終了
         const gs = this.#blockSprite[y + dy][x + dx];
         if(gs.cx === 9) return;
-
-        this.#showMark(nx, ny);
     }
 
     poll (deltaTime, pointer) {
@@ -797,7 +742,7 @@ const Souko = class extends Game {
         const px = p.x / Sprite.charWidth;
         const py = p.y / Sprite.charHeight - 1;
 
-        // 豚を押した場合
+        // ぶたさんを押した場合
         if(p.hitTest(pointer.x, pointer.y) && pointer.count === 0) {
             sound.play(32, 0.08, 20); // 鳴く音を再生
             return;
@@ -805,50 +750,59 @@ const Souko = class extends Game {
 
         if(this.#goalWait !== 0 || this.#currentStage >= this.#stage.length) return;
 
-        for(let y = 0; y < this.#stageHeight; y++) {
-            for(let x = 0; x < this.#stageWidth; x++) {
-                const s = this.#blockSprite[y][x];
-                if(!s.hitTest(pointer.x, pointer.y)) continue; // ブロックを押していない場合は次へ
+        const pcx = Math.floor(pointer.prevX / Sprite.charWidth)
+        const pcy = Math.floor(pointer.prevY / Sprite.charHeight) - 1
+        const ccx = Math.floor(pointer.x / Sprite.charWidth)
+        const ccy = Math.floor(pointer.y / Sprite.charHeight) - 1
 
-                if(s.cx % 2 === 1 && pointer.count === 0) {
-                    sound.play(8, 0.05, 8); // とにかく歩けない音を再生
-                    continue;
-                }
+        if(pcx === ccx && pcy === ccy) return; // ポインターがブロック単位で動いていなければ返す
+        if(ccx !== px || ccy !== py) return; // プレイヤーの背中を押していなければ返す
 
-                const dx = px - x;
-                const dy = py - y;
-                const nx = x + dx * 2;
-                const ny = y + dy * 2;
-                let ns = null;
-                if(
-                    0 <= nx && nx < this.#stageWidth &&
-                    0 <= ny && ny < this.#stageHeight
-                ) ns = this.#blockSprite[ny][nx];
+        let dx = 0, dy = 0;
 
-                if(ns === null) continue; 
-                if(pointer.count !== 0) continue;
+        if(pcx < ccx) dx = 1;
+        else if(ccx < pcx) dx = -1;
+        else if(pcy < ccy) dy = 1;
+        else if(ccy < pcy) dy = -1;
 
-                // 動ける床を押した場合
-                if(ns.cx === 5 || ns.cx === 6) {
-                    this.#movePlayer(dx, dy); // プレイヤーを動かす
-                    sound.play(32, 0.05, 32); // ブロックを動かす音を再生
-                }
-                // 押せるブロックを押した場合
-                else if(ns.cx === 7 || ns.cx === 8) {
-                    this.#movePlayer(dx, dy); // プレイヤーを動かす
-                    super.addPoint(1);
-                    sound.play(44, 0.05, 44); // 歩く音を再生
-                }
-                // ゴールした場合
-                else if(ns.cx === 9 || ns.cx === 10) {
-                    this.#movePlayer(dx, dy); // プレイヤーを動かす
-                    this.#playerSprite.changeChar(4, 2, 1, 1);
-                    this.#goalWait = 1;
-                    sound.play(44, 0.1, 68); // ゴール音を再生
-                } else {
-                    sound.play(8, 0.05, 8); // とにかく歩けない音を再生
-                }
-            }
+        // 動く先のブロック
+        const nx = px + dx;
+        const ny = py + dy;
+        let ns = null;
+        if(
+            0 <= nx && nx < this.#stageWidth &&
+            0 <= ny && ny < this.#stageHeight
+        ) ns = this.#blockSprite[ny][nx];
+        if(ns === null) return;
+
+        // 更に先のブロック
+        const nnx = px + dx * 2;
+        const nny = py + dy * 2;
+        let nns = null;
+        if(
+            0 <= nnx && nnx < this.#stageWidth &&
+            0 <= nny && nny < this.#stageHeight
+        ) nns = this.#blockSprite[nny][nnx];
+
+        // 動ける床を押した場合
+        if(ns.cx === 5) {
+            this.#movePlayer(dx, dy); // プレイヤーを動かす
+            sound.play(32, 0.05, 32); // ブロックを動かす音を再生
+        }
+        // 押せるブロックを押した場合
+        else if(ns.cx === 7 && nns !== null && nns.cx === 5) {
+            this.#movePlayer(dx, dy); // プレイヤーを動かす
+            super.addPoint(1);
+            sound.play(44, 0.05, 44); // 歩く音を再生
+        }
+        // ゴールした場合
+        else if(ns.cx === 9) {
+            this.#movePlayer(dx, dy); // プレイヤーを動かす
+            this.#playerSprite.changeChar(4, 2, 1, 1);
+            this.#goalWait = 1;
+            sound.play(44, 0.1, 68); // ゴール音を再生
+        } else {
+            sound.play(8, 0.05, 8); // とにかく歩けない音を再生
         }
     }
 
