@@ -65,16 +65,31 @@ const Pointer = class {
         const width = rect.width;
         const height = rect.height;
 
-        this.#prevX = this.#x
-        this.#prevY = this.#y
-
-        this.#x = Math.floor((x - left) / width * this.#canvas.width);
-        this.#y = Math.floor((y - top) / height * this.#canvas.height);
-
         // 0が送られてくるとそのまま、1は押されているに更新、-1は押されていないに更新
         if(down !== 0 && this.#down !== down) {
             this.#count = -1;
             this.#down = down;
+        }
+
+        // 押していなかったらここで終わり
+        if(this.#down !== 1) return;
+
+        // 前回の座標を退避する
+        if(this.#count !== -1) {
+            this.#prevX = this.#x
+            this.#prevY = this.#y
+        }
+
+        // 押している時のみ座標を更新
+        if(this.#down === 1) {
+            this.#x = Math.floor((x - left) / width * this.#canvas.width);
+            this.#y = Math.floor((y - top) / height * this.#canvas.height);
+        }
+
+        // 押した瞬間なら前回の座標を今回の座標と同じにする
+        if(this.#count === -1) {
+            this.#prevX = this.#x
+            this.#prevY = this.#y
         }
     }
 
@@ -133,6 +148,9 @@ const Sound = class {
 
     // 音声再生
     play (startNote, time, endNote) {
+        this.#gainNode.gain.cancelScheduledValues(this.#audioContext.currentTime);
+        this.#oscillatorNode.frequency.cancelScheduledValues(this.#audioContext.currentTime);
+
         this.#gainNode.gain.setValueAtTime(0, this.#audioContext.currentTime);
         this.#gainNode.gain.linearRampToValueAtTime(0.2, this.#audioContext.currentTime + 0.001);
         this.#gainNode.gain.linearRampToValueAtTime(0.2, this.#audioContext.currentTime + time - 0.001);
@@ -508,6 +526,9 @@ const Mogura = class extends Game {
         this.#prevTime = this.#time;
         this.#time += deltaTime;
 
+        if(Math.floor(this.#prevTime) === 2 && Math.floor(this.#time) === 3)
+            sound.play(78, 1, 78);
+
         const len = this.#order.length;
         const ft = Math.floor(this.#time / this.#second);
         const fpt = Math.floor(this.#prevTime / this.#second)
@@ -744,8 +765,8 @@ const Souko = class extends Game {
 
         // ぶたさんを押した場合
         if(p.hitTest(pointer.x, pointer.y) && pointer.count === 0) {
-            sound.play(32, 0.08, 20); // 鳴く音を再生
-            return;
+            sound.play(32, 0.08, 20); // 鳴く
+            p.changeChar(0, 2, 1, 1);
         }
 
         if(this.#goalWait !== 0 || this.#currentStage >= this.#stage.length) return;
@@ -856,36 +877,371 @@ const Ball = class extends Game {
 // ドットイートのクラス
 const Doteat = class extends Game {
 
-    #resultFlag = false;
+    #playerSprite = null; // プレイヤーのスプライト
+    #stageWidth = 8;
+    #stageHeight = 7;
+    #stage = [
+        [
+            [3, 3, 3, 3, 3, 3, 3, 3,],
+            [3, 2, 1, 1, 1, 1, 1, 3,],
+            [3, 1, 3, 3, 3, 3, 1, 3,],
+            [3, 1, 1, 0, 1, 1, 1, 3,],
+            [3, 1, 3, 3, 3, 3, 1, 3,],
+            [3, 1, 1, 1, 1, 1, 1, 3,],
+            [3, 3, 3, 3, 3, 3, 3, 3,],
+        ],
+        [
+            [3, 3, 3, 3, 3, 3, 3, 3,],
+            [3, 3, 1, 3, 3, 1, 3, 3,],
+            [3, 2, 1, 1, 1, 1, 1, 3,],
+            [3, 3, 1, 3, 0, 1, 3, 3,],
+            [3, 1, 1, 1, 1, 1, 2, 3,],
+            [3, 3, 1, 3, 3, 1, 3, 3,],
+            [3, 3, 3, 3, 3, 3, 3, 3,],
+        ],
+        [
+            [3, 3, 3, 3, 3, 3, 3, 3,],
+            [3, 2, 1, 1, 1, 2, 3, 3,],
+            [3, 1, 1, 3, 1, 1, 1, 3,],
+            [3, 1, 1, 1, 3, 1, 1, 3,],
+            [3, 1, 3, 1, 1, 1, 2, 3,],
+            [3, 1, 1, 1, 0, 3, 3, 3,],
+            [3, 3, 3, 3, 3, 3, 3, 3,],
+        ],
+    ] // ブロックの初期状態
+    #dotNum = 0; // ドットの残り数
+    #currentStage = 0; // 現在のステージ
+    #blockSprite = new Array(this.#stage.length);
+    #catSprite = new Array(3);
+    #catLength = 0; // ネコの数
+    #catDelta = new Array(3); // ネコの移動方向
+    #time = 0; // スタートからの時間
+    #allTime = 0; // 全体の時間
+    #startBeep = false; // 開始後かどうか
+    #clearWait = 0; // クリア時の待ち時間
+    #downTime = 0; // ネコに当たってダウンしている時間
+    #resultFlag = false // 結果画面かどうか
 
     constructor (screen) {
         super(screen);
+
+        // スプライトの初期化
+        this.#playerSprite = new Sprite(screen);
+        for(var y = 0; y < this.#stageHeight; y++) {
+            this.#blockSprite[y] = new Array(this.#stageWidth);
+            for(var x = 0; x < this.#stageWidth; x++) {
+                this.#blockSprite[y][x] = new Sprite(screen);
+            }
+        }
+        for(var i = 0; i < this.#catSprite.length; i++) {
+            this.#catSprite[i] = new Sprite(screen);
+        }
     }
 
     start () {
         super.start();
+
+        super.point = 0;
+        this.#resultFlag = false;
+        this.#allTime = 0;
+
+        // プレイヤーのスプライトの初期化
+        this.#playerSprite.changeChar(0, 4, 1, 1);
+
+        // ブロックのスプライトの初期化
+        for(var y = 0; y < 7; y++) {
+            for(var x = 0; x < 8; x++) {
+                this.#blockSprite[y][x].setPosition(x * Sprite.charWidth, (1 + y) * Sprite.charHeight);
+            }
+        }
+
+        // ネコスプライトの初期化
+        for(var i = 0; i < this.#catSprite.length; i++) {
+            this.#catSprite[i].changeChar(7, 4, 1, 1);
+            this.#catSprite[i].setPosition(x * Sprite.charWidth, (1 + y) * Sprite.charHeight);
+            this.#catDelta[i] = {};
+        }
+
+        // 最初のステージを準備
+        this.#startStage();
+    }
+
+    #startStage () {
+        // 最後のステージをクリアしていた場合
+        if(this.#currentStage >= this.#stage.length) {
+            this.#resultFlag = true;
+            sound.play(71, 1, 71)
+            return;
+        }
+
+        this.#playerSprite.changeChar(0, 4, 1, 1); // プレイヤーに正面を向かせる
+
+        this.#time = -2; // 2秒後に開始
+        this.#startBeep = false;
+        this.#catLength = 0;
+        this.#dotNum = 0;
+        this.#downTime = 0;
+
+        // ブロックの位置を初期化
+        for(let y = 0; y < 7; y++) {
+            for(let x = 0; x < 8; x++) {
+                // ドット
+                if(this.#stage[this.#currentStage][y][x] === 1) {
+                    this.#blockSprite[y][x].changeChar(6, 4, 1, 1);
+                    this.#dotNum++;
+                } else
+                // ネコ
+                if(this.#stage[this.#currentStage][y][x] === 2) {
+                    this.#blockSprite[y][x].changeChar(6, 4, 1, 1);
+                    this.#catSprite[this.#catLength].setPosition(x * Sprite.charWidth, (y + 1) * Sprite.charHeight);
+                    this.#catDelta[this.#catLength].x = 1;
+                    this.#catDelta[this.#catLength].y = 0;
+                    this.#catLength++;
+                    this.#dotNum++;
+                } else
+                // 壁
+                if(this.#stage[this.#currentStage][y][x] === 3) {
+                    this.#blockSprite[y][x].changeChar(8, 4, 1, 1);
+                } else
+                // プレイヤー
+                if(this.#stage[this.#currentStage][y][x] === 0) {
+                    this.#playerSprite.setPosition(x * Sprite.charWidth, (y + 1) * Sprite.charHeight);
+                    this.#blockSprite[y][x].changeChar(5, 4, 1, 1);
+                }
+            }
+        }
+    }
+
+    // ネコの移動
+    #moveCat (prevTime, time) {
+        if(this.#time < 0) return; // まだステージ開始していなければ返す
+        if(this.#clearWait > 0 || this.#resultFlag) return; // 動く時間でなければ返す
+        if(Math.floor(prevTime) === Math.floor(time)) return; // 動く時間でなければ返す
+
+        for(var i = 0; i < this.#catLength; i++) {
+            const ccx = Math.floor(this.#catSprite[i].x / Sprite.charWidth); // 現在の位置
+            const ccy = Math.floor(this.#catSprite[i].y / Sprite.charHeight) - 1;
+
+            for(let j = 0; j < 3; j++) { // 3回まで連続で方向転換
+                const ncx = ccx + this.#catDelta[i].x; // 仮の動き先の位置
+                const ncy = ccy + this.#catDelta[i].y;
+                if(this.#stage[this.#currentStage][ncy][ncx] === 3) this.#catRotate(i); // 方向変え
+                else break; // 方向変えが必要ないなら抜ける
+            }
+
+            const x = this.#catSprite[i].x + this.#catDelta[i].x * Sprite.charWidth;
+            const y = this.#catSprite[i].y + this.#catDelta[i].y * Sprite.charHeight;
+
+            this.#catSprite[i].setPosition(x, y);
+        }
+    }
+
+    // ネコの方向回転
+    #catRotate (catId) {
+        if(this.#catDelta[catId].x === 1 && this.#catDelta[catId].y === 0) {
+            this.#catDelta[catId].x = 0;
+            this.#catDelta[catId].y = 1;
+        } else
+        if(this.#catDelta[catId].x === -1 && this.#catDelta[catId].y === 0) {
+            this.#catDelta[catId].x = 0;
+            this.#catDelta[catId].y = -1;
+        } else
+        if(this.#catDelta[catId].x === 0 && this.#catDelta[catId].y === 1) {
+            this.#catDelta[catId].x = -1;
+            this.#catDelta[catId].y = 0;
+        } else
+        if(this.#catDelta[catId].x === 0 && this.#catDelta[catId].y === -1) {
+            this.#catDelta[catId].x = 1;
+            this.#catDelta[catId].y = 0;
+        }
+    }
+
+    // プレイヤーの移動
+    #movePlayer (dx, dy) {
+        const x = this.#playerSprite.x / Sprite.charWidth;
+        const y = this.#playerSprite.y / Sprite.charHeight - 1;
+        const nx = x + dx;
+        const ny = y + dy;
+
+        // プレイヤーを動かす
+        this.#playerSprite.setPosition(nx * Sprite.charWidth, (ny + 1) * Sprite.charHeight);
+
+        // プレイヤーの向きを更新
+        if(dx === 0 && dy === 1) this.#playerSprite.changeChar(0, 4, 1, 1);
+        if(dx === 0 && dy === -1) this.#playerSprite.changeChar(1, 4, 1, 1);
+        if(dx === -1 && dy === 0) this.#playerSprite.changeChar(2, 4, 1, 1);
+        if(dx === 1 && dy === 0) this.#playerSprite.changeChar(3, 4, 1, 1);
     }
 
     poll (deltaTime, pointer) {
-        const end = super.poll(deltaTime, pointer);
-        if(end && this.#resultFlag) return super.point;
-        if(end) return super.point;
+        const end = super.poll(deltaTime, pointer); // スーパークラスのメソッドを実行
+        if(end && this.#currentStage === this.#stage.length) return super.point; // リザルトを見て終了
+        else if(end) return -1; // キャンセル終了
 
+        const prevTime = this.#time // 一回前の時刻
+        this.#time += deltaTime; // 現在の時刻
 
-        this.#push(pointer);
+        // タイムアタック用のタイムを加算
+        if(
+            this.#time >= 0 &&
+            this.#clearWait <= 0 &&
+            this.#currentStage < this.#stage.length
+        ) this.#allTime += deltaTime;
 
-        return 100;
+        this.#moveCat(prevTime, this.#time) // ネコを動かす
+
+        // 最初の開始音を鳴らす
+        if(this.#time >= -1 && !this.#startBeep) {
+            this.#startBeep = true;
+            sound.play(83, 1, 83); // 開始音
+        }
+
+        this.#hitCat(); // ネコに当たったか
+        this.#down(deltaTime); // ダウンしているか
+
+        this.#push(pointer); // 画面を押した
+
+        if(this.#time < 0) return 100; // まだ始まっていなければ返す
+
+        super.point = Math.floor(this.#allTime) // ポイントに全体の経過時間を加算
+
+        if(this.#clear(deltaTime)) return 100; // クリアしている待ち状態ならここで返す
+
+        return 100; // ゲームを続ける
+    }
+
+    // ネコに当たってダウンしていた場合の処理
+    #down (deltaTime) {
+        if(this.#downTime <= 0) return; // ダウンしていなかったら返す
+
+        this.#downTime -= deltaTime;
+
+        // ダウンから復帰
+        if(this.#downTime < 0) {
+            this.#downTime = 0;
+            this.#playerSprite.changeChar(0, 4, 1, 1); // ねずみの見た目を正常にする
+        }
+    }
+
+    // ネコに当たった
+    #hitCat () {
+        if(this.#downTime > 0) return; // 既にダウンしていたら返す
+
+        const p = this.#playerSprite;
+        const px = p.x + Sprite.charWidth / 2;
+        const py = p.y + Sprite.charHeight / 2;
+
+        // ネコに当たっていた場合は
+        for(let i = 0; i < this.#catLength; i++) {
+            const c = this.#catSprite[i];
+            if(!c.hitTest(px, py)) continue;
+            this.#downTime = 2; // ダウンしている時間を設定
+            p.changeChar(4, 4, 1, 1);
+            sound.play(84, 0.08, 80); // 鳴く
+        }
+    }
+
+    // クリアチェック
+    #clear (deltaTime) {
+        if(this.#clearWait <= 0) return false; // クリアした待ち状態でなければ返す
+    
+        // 次のステージへ
+        this.#clearWait -= deltaTime;
+        if(this.#clearWait <= 0) {
+            this.#currentStage++;
+            this.#startStage();
+            this.#clearWait = 0;
+        }
+
+        return true;
     }
 
     #push (pointer) {
         if(
-            pointer.down !== 1 ||
-            pointer.count !== 0
+            pointer.down !== 1
         ) return;
+
+        const p = this.#playerSprite;
+        const px = p.x / Sprite.charWidth;
+        const py = p.y / Sprite.charHeight - 1;
+
+        // ネコを押した場合
+        for(let c of this.#catSprite) {
+            if(!c.hitTest(pointer.x, pointer.y) || pointer.count !== 0) continue;
+            sound.play(40, 0.08, 36); // 鳴く
+        }
+
+        // ねずみさんを押した場合
+        const dp = (p.hitTest(pointer.x, pointer.y) && pointer.count === 0);
+        if(dp && this.#downTime <= 0) { // ダウンしていない場合
+            sound.play(80, 0.08, 76); // 鳴く
+            p.changeChar(0, 4, 1, 1); // こちらを振り向く
+        } else
+        if(dp) { // ダウンしていた場合
+            sound.play(84, 0.08, 80); // 高い声で鳴く
+        }
+
+        if(this.#time < 0) return; // まだ始まっていなければ返す
+        if(this.#downTime > 0) return; // ダウンしていたら返す
+        if(this.#clearWait !== 0 || this.#resultFlag) return; // 押せない時だったら返す
+
+        const pcx = Math.floor(pointer.prevX / Sprite.charWidth)
+        const pcy = Math.floor(pointer.prevY / Sprite.charHeight) - 1
+        const ccx = Math.floor(pointer.x / Sprite.charWidth)
+        const ccy = Math.floor(pointer.y / Sprite.charHeight) - 1
+
+        if(pcx === ccx && pcy === ccy) return; // ポインターがブロック単位で動いていなければ返す
+        if(ccx !== px || ccy !== py) return; // プレイヤーの背中を押していなければ返す
+
+        let dx = 0, dy = 0;
+
+        if(pcx < ccx) dx = 1;
+        else if(ccx < pcx) dx = -1;
+        else if(pcy < ccy) dy = 1;
+        else if(ccy < pcy) dy = -1;
+
+        // 動く先のタイル
+        const nx = px + dx;
+        const ny = py + dy;
+        let ns = null;
+        if(
+            0 <= nx && nx < this.#stageWidth &&
+            0 <= ny && ny < this.#stageHeight
+        ) ns = this.#blockSprite[ny][nx];
+        if(ns === null) return;
+
+        // 点取得済みのタイル
+        if(ns.cx === 5) {
+            this.#movePlayer(dx, dy); // プレイヤーを動かす
+            sound.play(23, 0.05, 23); // 歩く音を再生
+        } else
+        // 点のタイル
+        if(ns.cx === 6) {
+            this.#movePlayer(dx, dy); // プレイヤーを動かす
+            ns.changeChar(5, 4, 1, 1); // 点を消す
+            sound.play(35, 0.05, 47); // たべる音を再生
+            this.#dotNum--;
+        }
+
+        // すべてのドットをたべた場合
+        if(this.#dotNum <= 0 && this.#clearWait <= 0) {
+            this.#playerSprite.changeChar(9, 4, 1, 1); // クリアしたポーズ
+            this.#clearWait = 1;
+            sound.play(56, 0.1, 68); // ゴール音を再生
+        }
     }
 
     draw () {
         super.draw();
+        for(var y = 0; y < 7; y++) {
+            for(var x = 0; x < 8; x++) {
+                this.#blockSprite[y][x].draw();
+            }
+        }
+        for(var i = 0; i < this.#catLength; i++) {
+            this.#catSprite[i].draw();
+        }
+        this.#playerSprite.draw();
     }
 }
 
@@ -995,6 +1351,7 @@ const Dream = class {
         75,
     ];
     #menuPointSprite = {};
+    #frameContinue = false;
 
     constructor (screen, pointer) {
         this.#screen = screen;
@@ -1013,6 +1370,23 @@ const Dream = class {
         this.#menuClass['doteat'] = Doteat;
         this.#menuClass['shooting'] = Shooting;
         this.#menuClass['jump'] = Jump;
+
+        // キャラの幅と高さを取得
+        const cw = Sprite.charWidth;
+        const ch = Sprite.charHeight;
+
+        // ポイントの初期化
+        for(let i = 0; i < this.#menuArray.length; i++) {
+            this.#menuPoint[this.#menuArray[i]] = 100;
+            this.#menuPointSprite[this.#menuArray[i]][0].changeChar(6, 1, 1, 1);
+            this.#menuPointSprite[this.#menuArray[i]][1].changeChar(6, 1, 1, 1);
+            this.#menuPointSprite[this.#menuArray[i]][0].setPosition(canvas.width - cw, (i + 1) * ch);
+            this.#menuPointSprite[this.#menuArray[i]][1].setPosition(canvas.height - cw * 2, (i + 1) * ch);
+        }
+
+        this.#game = null;
+        this.#gameId = -1;
+        this.#gameName = '';
     }
 
     start () {
@@ -1034,19 +1408,10 @@ const Dream = class {
             this.#menuSprite[this.#menuArray[i]].setPosition(0, (i + 1) * ch);
         }
 
-        // ポイントの初期化
-        for(let i = 0; i < this.#menuArray.length; i++) {
-            this.#menuPoint[this.#menuArray[i]] = 100;
-            this.#menuPointSprite[this.#menuArray[i]][0].changeChar(6, 1, 1, 1);
-            this.#menuPointSprite[this.#menuArray[i]][1].changeChar(6, 1, 1, 1);
-            this.#menuPointSprite[this.#menuArray[i]][0].setPosition(canvas.width - cw, (i + 1) * ch);
-            this.#menuPointSprite[this.#menuArray[i]][1].setPosition(canvas.height - cw * 2, (i + 1) * ch);
+        if(!this.#frameContinue) {
+            this.#frameContinue = true;
+            requestAnimationFrame(this.#frame.bind(this));
         }
-
-        this.#gameId = -1;
-        this.#gameName = '';
-
-        requestAnimationFrame(this.#frame.bind(this));
     }
 
     // ゲームタイトルを押したら実行
@@ -1106,7 +1471,7 @@ const Dream = class {
 
     // ゲームをポーリング
     #pollGame (deltaTime, pointer) {
-        if(this.#game === null) return;
+        if(this.#game === null || this.#isTitle) return;
         const point = this.#game.poll(deltaTime, pointer);
 
         this.#endGame(point); // ゲームが終了したか判定
@@ -1114,7 +1479,7 @@ const Dream = class {
 
     // ゲームを描画
     #drawGame () {
-        if(this.#game === null) return;
+        if(this.#game === null || this.#isTitle) return;
         
         this.#game.draw(); // ゲームの描画
     }
@@ -1209,5 +1574,6 @@ body.addEventListener('contextmenu', stopEvent, { passive: false });
 // 画面がブラウザに復帰した
 document.addEventListener('visibilitychange', (e) => {
     if (!document.hidden) {
+        dream.start();
     }
 });
