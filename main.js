@@ -894,7 +894,7 @@ const Doteat = class extends Game {
             [3, 3, 3, 3, 3, 3, 3, 3,],
             [3, 3, 1, 3, 3, 1, 3, 3,],
             [3, 2, 1, 1, 1, 1, 1, 3,],
-            [3, 3, 1, 3, 0, 1, 3, 3,],
+            [3, 3, 3, 1, 0, 3, 3, 3,],
             [3, 1, 1, 1, 1, 1, 2, 3,],
             [3, 3, 1, 3, 3, 1, 3, 3,],
             [3, 3, 3, 3, 3, 3, 3, 3,],
@@ -1213,7 +1213,7 @@ const Doteat = class extends Game {
         // 点取得済みのタイル
         if(ns.cx === 5) {
             this.#movePlayer(dx, dy); // プレイヤーを動かす
-            sound.play(23, 0.05, 23); // 歩く音を再生
+            sound.play(23, 0.05, 11); // 歩く音を再生
         } else
         // 点のタイル
         if(ns.cx === 6) {
@@ -1261,7 +1261,7 @@ const Shooting = class extends Game {
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
         if(end && this.#resultFlag) return super.point;
-        if(end) return super.point;
+        if(end) return -1;
 
 
         this.#push(pointer);
@@ -1297,7 +1297,7 @@ const Jump = class extends Game {
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
         if(end && this.#resultFlag) return super.point;
-        if(end) return super.point;
+        if(end) return -1;
 
 
         this.#push(pointer);
