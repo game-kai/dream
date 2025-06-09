@@ -777,7 +777,7 @@ const Souko = class extends Game {
         const ccy = Math.floor(pointer.y / Sprite.charHeight) - 1
 
         if(pcx === ccx && pcy === ccy) return; // ポインターがブロック単位で動いていなければ返す
-        if(ccx !== px || ccy !== py) return; // プレイヤーの背中を押していなければ返す
+        if(pcx !== px || pcy !== py) return; // プレイヤーを押していなければ返す
 
         let dx = 0, dy = 0;
 
@@ -1103,7 +1103,7 @@ const Doteat = class extends Game {
 
         if(this.#time < 0) return 100; // まだ始まっていなければ返す
 
-        super.point = Math.floor(this.#allTime) // ポイントに全体の経過時間を加算
+        super.point = Math.min(Math.floor(this.#allTime), 99); // ポイントに全体の経過時間を加算
 
         if(this.#clear(deltaTime)) return 100; // クリアしている待ち状態ならここで返す
 
@@ -1191,7 +1191,7 @@ const Doteat = class extends Game {
         const ccy = Math.floor(pointer.y / Sprite.charHeight) - 1
 
         if(pcx === ccx && pcy === ccy) return; // ポインターがブロック単位で動いていなければ返す
-        if(ccx !== px || ccy !== py) return; // プレイヤーの背中を押していなければ返す
+        if(pcx !== px || pcy !== py) return; // プレイヤーを押していなければ返す
 
         let dx = 0, dy = 0;
 
