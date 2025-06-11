@@ -52,6 +52,7 @@ const Pointer = class {
     #prevY = 0;
     #down = -1;
     #count = -1;
+    #clicked = false;
 
     constructor (canvas) {
         this.#canvas = canvas;
@@ -64,6 +65,13 @@ const Pointer = class {
         const top = rect.top;
         const width = rect.width;
         const height = rect.height;
+
+        // 特別にクリックのみ別に処理
+        if(down === 2) {
+            sound.start();
+            this.#clicked = true;
+            return;
+        }
 
         // 0が送られてくるとそのまま、1は押されているに更新、-1は押されていないに更新
         if(down !== 0 && this.#down !== down) {
@@ -96,6 +104,10 @@ const Pointer = class {
     // ゲームのフレームから呼んでポインター情報を返す
     poll () {
         this.#count++;
+
+        const clicked = this.#clicked
+        this.#clicked = false;
+        
         return {
             x: this.#x,
             y: this.#y,
@@ -103,6 +115,7 @@ const Pointer = class {
             prevY: this.#prevY,
             down: this.#down,
             count: this.#count,
+            clicked: clicked,
         };
     }
 }
@@ -116,44 +129,49 @@ const Sound = class {
     #audioContext = null;
     #oscillatorNode = null;
     #gainNode = null;
+    started = false;
 
     constructor () {
         // 音声の周波数計算
-        this.#soundNote = []
-        let nextFreq = Math.pow(2, 1 / 12)
+        this.#soundNote = [];
+        let nextFreq = Math.pow(2, 1 / 12);
         let f = 49; // ラの音の高さ
-        for(let n = 0; n < 12 * 8; n++){
-            this.#soundNote[n] = f
-            f *= nextFreq
+        for (let n = 0; n < 12 * 8; n++) {
+            this.#soundNote[n] = f;
+            f *= nextFreq;
         }
     }
 
     // 音声開始
     start () {
-        if(this.#audioContext === null) this.#audioContext = new AudioContext();
+        if(this.started) return;
+        this.started = true;
+        
+        this.#audioContext = new AudioContext();
 
-        if (this.#audioContext.state === 'suspended') this.#audioContext.resume();
+        //if (this.#audioContext.state === 'suspended') this.#audioContext.resume();
 
         this.#oscillatorNode = new OscillatorNode(this.#audioContext);
         this.#oscillatorNode.type = "square";
 
         this.#gainNode = this.#audioContext.createGain();
-        this.#gainNode.gain.value = 0.5;
 
         this.#oscillatorNode.connect(this.#gainNode).connect(this.#audioContext.destination);
         this.#oscillatorNode.start(0);
 
-        this.#gainNode.gain.linearRampToValueAtTime(0, this.#audioContext.currentTime);
+        this.#gainNode.gain.setValueAtTime(0, this.#audioContext.currentTime);
     }
 
     // 音声再生
     play (startNote, time, endNote) {
+        if(!this.started) return;
+        
         this.#gainNode.gain.cancelScheduledValues(this.#audioContext.currentTime);
         this.#oscillatorNode.frequency.cancelScheduledValues(this.#audioContext.currentTime);
 
         this.#gainNode.gain.setValueAtTime(0, this.#audioContext.currentTime);
-        this.#gainNode.gain.linearRampToValueAtTime(0.2, this.#audioContext.currentTime + 0.001);
-        this.#gainNode.gain.linearRampToValueAtTime(0.2, this.#audioContext.currentTime + time - 0.001);
+        this.#gainNode.gain.linearRampToValueAtTime(0.5, this.#audioContext.currentTime + 0.001);
+        this.#gainNode.gain.linearRampToValueAtTime(0.5, this.#audioContext.currentTime + time - 0.001);
         this.#gainNode.gain.linearRampToValueAtTime(0, this.#audioContext.currentTime + time);
 
         this.#oscillatorNode.frequency.setValueAtTime(this.#soundNote[startNote], this.#audioContext.currentTime);
@@ -170,12 +188,13 @@ const Sprite = class {
     static charWidth = 16;
     static charHeight = 16;
     #screen = null;
-    #cx;
-    #cy;
-    #cw;
-    #ch;
-    #x;
-    #y;
+    #cx = 0;
+    #cy = 0;
+    #cw = 1;
+    #ch = 1;
+    #x = 0;
+    #y = 0;
+    #showFlag = true;
 
     constructor (screen) {
         this.#screen = screen;
@@ -198,7 +217,16 @@ const Sprite = class {
         this.#y += dy;
     }
 
+    show () {
+        this.#showFlag = true;
+    }
+
+    hide () {
+        this.#showFlag = false;
+    }
+
     draw () {
+        if (!this.#showFlag) return;
         this.#screen.drawChar(this.#cx, this.#cy, this.#cw, this.#ch, this.#x, this.#y);
     }
 
@@ -228,6 +256,9 @@ const Sprite = class {
     }
     get ch () {
         return this.#ch;
+    }
+    get showFlag () {
+        return this.#showFlag;
     }
 }
 
@@ -526,7 +557,8 @@ const Mogura = class extends Game {
         this.#prevTime = this.#time;
         this.#time += deltaTime;
 
-        if(Math.floor(this.#prevTime) === 2 && Math.floor(this.#time) === 3)
+        // 最初のスタート音
+        if(Math.floor(this.#prevTime) === 1 && Math.floor(this.#time) === 2)
             sound.play(78, 1, 78);
 
         const len = this.#order.length;
@@ -822,8 +854,6 @@ const Souko = class extends Game {
             this.#playerSprite.changeChar(4, 2, 1, 1);
             this.#goalWait = 1;
             sound.play(44, 0.1, 68); // ゴール音を再生
-        } else {
-            sound.play(8, 0.05, 8); // とにかく歩けない音を再生
         }
     }
 
@@ -1126,6 +1156,7 @@ const Doteat = class extends Game {
     // ネコに当たった
     #hitCat () {
         if(this.#downTime > 0) return; // 既にダウンしていたら返す
+        if(this.#clearWait > 0 || this.#resultFlag) return; // クリアしていたら返す
 
         const p = this.#playerSprite;
         const px = p.x + Sprite.charWidth / 2;
@@ -1249,13 +1280,52 @@ const Doteat = class extends Game {
 const Shooting = class extends Game {
     
     #resultFlag = false;
+    #earthSprite = new Array(8);
+    #playerSprite = null;
+    #playerDeltaSprite = null;
+    #playerShotSprite = new Array(3);
+    #enemyDeltaSprite = new Array(8);
+    #enemyShotSprite = new Array(16);
 
     constructor (screen) {
         super(screen);
+
+        // スプライトを初期化
+        this.#playerSprite = new Sprite(screen);
+        this.#playerDeltaSprite = new Sprite(screen);
+        for(let i = 0; i < this.#earthSprite.length; i++) this.#earthSprite[i] = new Sprite(screen);
+        for(let i = 0; i < this.#playerShotSprite.length; i++) this.#playerShotSprite[i] = new Sprite(screen);
+        for(let i = 0; i < this.#enemyDeltaSprite.length; i++) this.#enemyDeltaSprite[i] = new Sprite(screen);
+        for(let i = 0; i < this.#enemyShotSprite.length; i++) this.#enemyShotSprite[i] = new Sprite(screen);
     }
 
     start () {
         super.start();
+
+        // キャラと位置を初期化
+        this.#playerSprite.changeChar(0, 5, 1, 1);
+        this.#playerSprite.setPosition(3.5 * Sprite.charWidth, 6 * Sprite.charHeight);
+        this.#playerDeltaSprite.changeChar(2, 5, 1, 1);
+        this.#playerDeltaSprite.setPosition(3.5 * Sprite.charWidth, 5 * Sprite.charHeight);
+        for(let i = 0; i < this.#earthSprite.length; i++) {
+            this.#earthSprite[i].changeChar(6, 5, 1, 1);
+            this.#earthSprite[i].setPosition(i * Sprite.charWidth, 7 * Sprite.charHeight);
+        }
+        for(let i = 0; i < this.#playerShotSprite.length; i++) {
+            this.#playerShotSprite[i].changeChar(3, 5, 1, 1);
+            this.#playerShotSprite[i].hide();
+        }
+        for(let i = 0; i < this.#enemyDeltaSprite.length; i++) {
+            this.#enemyDeltaSprite[i].changeChar(4, 5, 1, 1);
+            this.#enemyDeltaSprite[i].setPosition(
+                (i % 4) * Sprite.charWidth * 2,
+                Math.floor(i / 4 + 1) * Sprite.charHeight
+            );
+        }
+        for(let i = 0; i < this.#enemyShotSprite.length; i++) {
+            this.#enemyShotSprite[i].changeChar(5, 5, 1, 1);
+            this.#enemyShotSprite[i].hide();
+        }
     }
 
     poll (deltaTime, pointer) {
@@ -1270,14 +1340,19 @@ const Shooting = class extends Game {
     }
 
     #push (pointer) {
-        if(
-            pointer.down !== 1 ||
-            pointer.count !== 0
-        ) return;
+        if(pointer.down !== 1) return; // 画面を押していなければ返す
     }
 
     draw () {
         super.draw();
+
+        // スプライトをすべて描画
+        this.#playerSprite.draw();
+        this.#playerDeltaSprite.draw();
+        for(let i = 0; i < this.#earthSprite.length; i++) this.#earthSprite[i].draw();
+        for(let i = 0; i < this.#playerShotSprite.length; i++) this.#playerShotSprite[i].draw();
+        for(let i = 0; i < this.#enemyDeltaSprite.length; i++) this.#enemyDeltaSprite[i].draw();
+        for(let i = 0; i < this.#enemyShotSprite.length; i++) this.#enemyShotSprite[i].draw();
     }
 }
 
@@ -1342,13 +1417,13 @@ const Dream = class {
         'jump',
     ];
     #menuNote = [
-        64,
-        66,
-        68,
-        69,
-        71,
-        73,
-        75,
+        52,
+        54,
+        56,
+        57,
+        59,
+        61,
+        63,
     ];
     #menuPointSprite = {};
     #frameContinue = false;
@@ -1414,18 +1489,14 @@ const Dream = class {
         }
     }
 
-    // ゲームタイトルを押したら実行
+    // タイトルを押したら実行
     #pushTitle (pointer) {
-        if(
-            !this.#isTitle ||
-            pointer.down === -1 ||
-            pointer.count !== 0
-        ) return;
+        if(!this.#isTitle || !pointer.clicked) return;
         this.#titleSprite.setPosition(0, 0);
         this.#isTitle = false;
     }
 
-    // ゲームタイトルを押したら実行
+    // メニューを押したら実行
     #pushMenu (pointer) {
         if(
             this.#isTitle ||
@@ -1433,7 +1504,6 @@ const Dream = class {
             pointer.count !== 0 ||
             this.#game !== null
         ) return;
-
 
         for(let i = 0; i < this.#menuArray.length; i++) {
             const m = this.#menuArray[i];
@@ -1490,7 +1560,7 @@ const Dream = class {
         
         // 終了音
         const note = this.#menuNote[this.#gameId];
-        sound.play(note - 12, 0.05, note - 12);
+        sound.play(note, 0.05, note);
 
         this.#gameId = -1;
         this.#gameName = '';
@@ -1530,36 +1600,54 @@ const Dream = class {
 const dream = new Dream(screen, pointer);
 dream.start();
 
-
-
-
-// キャンバスの押下
+// キャンバスを指で押す
 canvas.addEventListener('mousedown', (e) => {
-    sound.start();
+    e.stopPropagation();
     pointer.update(e.clientX, e.clientY, 1);
 });
 canvas.addEventListener('touchstart', (e) => {
-    sound.start();
+    e.stopPropagation();
     pointer.update(e.touches[0].clientX, e.touches[0].clientY, 1);
 });
+
 // キャンバス上のポインター移動
 canvas.addEventListener('mousemove', (e) => {
+    e.stopPropagation();
     pointer.update(e.clientX, e.clientY, 0);
 });
 canvas.addEventListener('touchmove', (e) => {
+    e.stopPropagation();
     pointer.update(e.touches[0].clientX, e.touches[0].clientY, 0);
 });
-// キャンバスの押下終了
+
+// キャンバスから指を離す
 canvas.addEventListener('mouseup', (e) => {
+    e.stopPropagation();
     pointer.update(e.clientX, e.clientY, -1);
 });
 canvas.addEventListener('touchend', (e) => {
+    e.stopPropagation();
     pointer.update(0, 0, -1);
+});
+
+// キャンバスをクリック
+canvas.addEventListener('click', (e) => {
+    e.stopPropagation();
+    pointer.update(e.clientX, e.clientY, 2);
+});
+
+// 画面がブラウザに復帰した
+document.addEventListener('visibilitychange', (e) => {
+    if (!document.hidden) {
+        sound.started = false;
+        dream.start();
+    }
 });
 
 // キャンバス以外は押しても無効
 const stopEvent = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     return false;
 }
 body.addEventListener('mousedown', stopEvent, { passive: false })
@@ -1570,10 +1658,3 @@ body.addEventListener('touchmove', stopEvent, { passive: false })
 body.addEventListener('touchend', stopEvent, { passive: false })
 body.addEventListener('click', stopEvent, { passive: false });
 body.addEventListener('contextmenu', stopEvent, { passive: false });
-
-// 画面がブラウザに復帰した
-document.addEventListener('visibilitychange', (e) => {
-    if (!document.hidden) {
-        dream.start();
-    }
-});
