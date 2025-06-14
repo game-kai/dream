@@ -13,6 +13,8 @@ const Screen = class {
     #image;
     static charLengthX = 8;
     static charLengthY = 8;
+    #width = 0;
+    #height = 0;
 
     constructor (canvas) {
         this.#canvas = canvas
@@ -20,6 +22,8 @@ const Screen = class {
         this.#image = document.createElement('img');
         this.#image.src = 'sprite.png';
         this.#context.fillStyle = '#000';
+        this.#width = canvas.width
+        this.#height = canvas.height
     }
 
     refresh () {
@@ -37,6 +41,14 @@ const Screen = class {
         const w = cw * charWidth;
         const h = ch * charHeight;
         this.#context.drawImage(this.#image, x, y, w, h, dx, dy, w, h);
+    }
+
+    get width () {
+        return this.#width;
+    }
+
+    get height () {
+        return this.#height;
     }
 }
 const screen = new Screen(canvas);
@@ -227,7 +239,7 @@ const Sprite = class {
 
     draw () {
         if (!this.#showFlag) return;
-        this.#screen.drawChar(this.#cx, this.#cy, this.#cw, this.#ch, this.#x, this.#y);
+        this.#screen.drawChar(Math.floor(this.#cx), Math.floor(this.#cy), Math.floor(this.#cw), Math.floor(this.#ch), Math.floor(this.#x), Math.floor(this.#y));
     }
 
     hitTest (px, py) {
@@ -256,6 +268,25 @@ const Sprite = class {
     }
     get ch () {
         return this.#ch;
+    }
+
+    set x (n) {
+        this.#x = n;
+    }
+    set y (n) {
+        this.#y = n;
+    }
+    set cx (n) {
+        this.#cx = n;
+    }
+    set cy (n) {
+        this.#cy = n;
+    }
+    set cw (n) {
+        this.#cw = n;
+    }
+    set ch (n) {
+        this.#ch = n;
     }
     get showFlag () {
         return this.#showFlag;
@@ -1279,13 +1310,36 @@ const Doteat = class extends Game {
 // シューティングのクラス
 const Shooting = class extends Game {
     
-    #resultFlag = false;
-    #earthSprite = new Array(8);
+    #prevTime = 0;
+    #time = 0;
+    #startFlag = false; // 開始後かのフラグ
+    #resultFlag = false; // 結果画面になったかのフラグ
+    #downTime = 0; // 自機を壊されたときの残りダウン時間
     #playerSprite = null;
-    #playerDeltaSprite = null;
-    #playerShotSprite = new Array(3);
-    #enemyDeltaSprite = new Array(8);
-    #enemyShotSprite = new Array(16);
+    #playerDeltaSprite = null; // 頭上にある三角
+    #playerShotSprite = new Array(8);
+    #enemyDeltaSprite = new Array(18);
+    #enemyShotSprite = new Array(64);
+    #enemyTable = [
+        [
+            1, 0, 0, 0, 0, 0, 0, 0,
+            1, 0, 0, 0, 1, 0, 0, 0,
+            1, 1, 0, 0, 0, 0, 0, 0,
+            1, 0, 0, 0, 1, 0, 0, 0,
+            1, 1, 0, 0, 1, 1, 0, 0,
+            1, 0, 1, 0, 1, 0, 1, 0,
+            1, 1, 1, 1, 0, 0, 0, 0,
+        ],
+        [
+            0, 0, 0, 0, 1, 0, 0, 0,
+            0, 0, 1, 0, 0, 0, 1, 0,
+            0, 0, 0, 0, 1, 1, 0, 0,
+            0, 0, 1, 0, 0, 0, 1, 0,
+            0, 0, 1, 1, 0, 0, 1, 1,
+            0, 1, 0, 1, 0, 1, 0, 1,
+            0, 0, 0, 0, 1, 1, 1, 1,
+        ],
+    ]
 
     constructor (screen) {
         super(screen);
@@ -1293,7 +1347,6 @@ const Shooting = class extends Game {
         // スプライトを初期化
         this.#playerSprite = new Sprite(screen);
         this.#playerDeltaSprite = new Sprite(screen);
-        for(let i = 0; i < this.#earthSprite.length; i++) this.#earthSprite[i] = new Sprite(screen);
         for(let i = 0; i < this.#playerShotSprite.length; i++) this.#playerShotSprite[i] = new Sprite(screen);
         for(let i = 0; i < this.#enemyDeltaSprite.length; i++) this.#enemyDeltaSprite[i] = new Sprite(screen);
         for(let i = 0; i < this.#enemyShotSprite.length; i++) this.#enemyShotSprite[i] = new Sprite(screen);
@@ -1304,28 +1357,31 @@ const Shooting = class extends Game {
 
         // キャラと位置を初期化
         this.#playerSprite.changeChar(0, 5, 1, 1);
-        this.#playerSprite.setPosition(3.5 * Sprite.charWidth, 6 * Sprite.charHeight);
+        this.#playerSprite.setPosition(3.5 * Sprite.charWidth, 7 * Sprite.charHeight);
         this.#playerDeltaSprite.changeChar(2, 5, 1, 1);
-        this.#playerDeltaSprite.setPosition(3.5 * Sprite.charWidth, 5 * Sprite.charHeight);
-        for(let i = 0; i < this.#earthSprite.length; i++) {
-            this.#earthSprite[i].changeChar(6, 5, 1, 1);
-            this.#earthSprite[i].setPosition(i * Sprite.charWidth, 7 * Sprite.charHeight);
-        }
+        this.#playerDeltaSprite.setPosition(3.5 * Sprite.charWidth, 6 * Sprite.charHeight);
         for(let i = 0; i < this.#playerShotSprite.length; i++) {
             this.#playerShotSprite[i].changeChar(3, 5, 1, 1);
             this.#playerShotSprite[i].hide();
         }
         for(let i = 0; i < this.#enemyDeltaSprite.length; i++) {
             this.#enemyDeltaSprite[i].changeChar(4, 5, 1, 1);
-            this.#enemyDeltaSprite[i].setPosition(
-                (i % 4) * Sprite.charWidth * 2,
-                Math.floor(i / 4 + 1) * Sprite.charHeight
-            );
+            this.#enemyDeltaSprite[i].setPosition(0, (i < this.#enemyDeltaSprite.length / 2? 1 : 2) * Sprite.charHeight);
+            this.#enemyDeltaSprite[i].hide();
         }
         for(let i = 0; i < this.#enemyShotSprite.length; i++) {
             this.#enemyShotSprite[i].changeChar(5, 5, 1, 1);
             this.#enemyShotSprite[i].hide();
         }
+
+        // 敵数をカウント
+        super.point = 0;
+        for(let i = 0; i < this.#enemyTable[0].length; i++)
+            if(this.#enemyTable[0][i] === 1) super.point++;
+        for(let i = 0; i < this.#enemyTable[1].length; i++)
+            if(this.#enemyTable[1][i] === 1) super.point++;
+
+        this.#time = -3; // 開始までの時間
     }
 
     poll (deltaTime, pointer) {
@@ -1333,14 +1389,265 @@ const Shooting = class extends Game {
         if(end && this.#resultFlag) return super.point;
         if(end) return -1;
 
+        this.#start();
+        this.#end();
+
+        this.#startEnemy(deltaTime); // 敵機を登場させる
+        this.#moveEnemy(deltaTime); // 敵機を動かす
 
         this.#push(pointer);
+
+        this.#playerShot(); // 自機のショットを撃つ
+        this.#movePlayerShot(deltaTime); // 自機のショットを動かす
+        this.#enemyShot(); // 敵機のショットを動かす
+        this.#moveEnemyShot(deltaTime); // 敵機のショットを動かす
+
+        this.#hitPlayer(); // 自機に当てる
+        this.#hitEnemy(); // 敵機に当てる
+
+        this.#down(deltaTime);
+
+        this.draw();
+
+        // 開始からの時間
+        this.#prevTime = this.#time;
+        this.#time += deltaTime;
 
         return 100;
     }
 
+    // 定期的にショットを撃つ
+    #playerShot () {
+        if(!this.#startFlag || this.#resultFlag) return; // 始まっていなかったり終わっていたら返す
+
+        if(this.#downTime > 0) return; // ダウンしていれば返す
+
+        const w = 2; // 1/2秒に一回ショットを撃つ
+        if(Math.floor(this.#prevTime * w) !== Math.floor(this.#time * w)) {
+            for(let i = 0; i < this.#playerShotSprite.length; i++) {
+                const s = this.#playerShotSprite[i];
+                if(s.showFlag) continue;
+                s.setPosition(this.#playerDeltaSprite.x, this.#playerDeltaSprite.y - Sprite.charHeight);
+                s.show();
+                break;
+            }
+        }
+    }
+
+    // 各ショットを上に動かす
+    #movePlayerShot (deltaTime) {
+        if(!this.#startFlag || this.#resultFlag) return; // 始まっていなかったり終わっていたら返す
+        for(let i = 0; i < this.#playerShotSprite.length; i++) {
+            const s = this.#playerShotSprite[i];
+            if(!s.showFlag) continue;
+            
+            s.y -= deltaTime * 64;
+
+            if(s.y < Sprite.charHeight * 1) s.hide(); // 画面の上に行ききったら消す
+        }
+    }
+
+    // 敵機のショットを動かす
+    #enemyShot () {
+        if(!this.#startFlag || this.#resultFlag) return; // 始まっていなかったり終わっていたら返す
+
+        const w = 2; // 2秒に一回ショットを撃つ
+
+        const t = Math.floor(this.#time / w);
+
+        if(Math.floor(this.#prevTime / w) !== t) {
+            const f = this.#time - Math.floor(this.#time); // 秒の小数
+
+            for(let i = 0; i < this.#enemyDeltaSprite.length; i++) {
+                const e = this.#enemyDeltaSprite[i];
+                if(!e.showFlag) continue;
+                for(let j = 0; j < this.#enemyShotSprite.length; j++) {
+                    const s = this.#enemyShotSprite[j];
+                    if(s.showFlag) continue;
+                    s.setPosition(e.x, e.y + Sprite.charHeight + f);
+                    s.show();
+                    break;
+                }
+            }
+        }
+    }
+
+    // 敵機のショットを動かす
+    #moveEnemyShot (deltaTime) {
+        if(!this.#startFlag || this.#resultFlag) return; // 始まっていなかったり終わっていたら返す
+
+        // 各ショットを下に動かす
+        for(let i = 0; i < this.#enemyShotSprite.length; i++) {
+            const s = this.#enemyShotSprite[i];
+            if(!s.showFlag) continue;
+            
+            s.y += deltaTime * 32;
+
+            if(s.y > Screen.height - Sprite.charHeight * 1) s.hide(); // 画面の下に行ききったら消す
+        }
+    }
+
+    // 敵を登場させる
+    #startEnemy (deltaTime) {
+        if(!this.#startFlag || this.#resultFlag) return; // 始まっていなかったり終わっていたら返す
+        if(Math.floor(this.#prevTime) === Math.floor(this.#time)) return; // 秒の変わり目でなければ返す
+
+        const t = Math.floor(this.#time); // 秒
+
+        if(t >= this.#enemyTable[0].length) return; // 敵テーブルを出し切った
+
+        const f = this.#time - Math.floor(this.#time); // 秒の小数部分だけ取り出す
+        
+        // 上の段の敵
+        if(this.#enemyTable[0][t] === 1) {
+            for(let i = 0; i < this.#enemyDeltaSprite.length / 2; i++) {
+                const s = this.#enemyDeltaSprite[i];
+                if(s.showFlag) continue;
+
+                s.x = screen.width - f;
+                s.show();
+
+                break;
+            }
+        }
+        
+        // 下の段の敵
+        if(this.#enemyTable[1][t] === 1) {
+            for(let i = this.#enemyDeltaSprite.length / 2; i < this.#enemyDeltaSprite.length; i++) {
+                const s = this.#enemyDeltaSprite[i];
+                if(s.showFlag) continue;
+
+                s.x = f - Sprite.charWidth;
+                s.show();
+
+                break;
+            }
+        }
+    }
+
+    // 敵を動かす
+    #moveEnemy (deltaTime) {
+        if(!this.#startFlag || this.#resultFlag) return; // 始まっていなかったり終わっていたら返す
+
+        const f = this.#time - Math.floor(this.#time); // 秒の小数部分だけ取り出す
+        
+        // 上の段の敵を動かす
+        for(let i = 0; i < this.#enemyDeltaSprite.length / 2; i++) {
+            const s = this.#enemyDeltaSprite[i];
+            if(!s.showFlag) continue;
+            
+            s.x -= deltaTime * Sprite.charWidth;
+
+            if(s.x < -Sprite.charWidth) s.hide(); // 画面の外に行ききったら消す
+        }
+        
+        // 下の段の敵を動かす
+        for(let i = this.#enemyDeltaSprite.length / 2; i < this.#enemyDeltaSprite.length; i++) {
+            const s = this.#enemyDeltaSprite[i];
+            if(!s.showFlag) continue;
+            
+            s.x += deltaTime * Sprite.charWidth;
+
+            if(s.x >= screen.width) s.hide(); // 画面の外に行ききったら消す
+        }
+    }
+
+    // 自機を壊されてダウンしている時間
+    #down (deltaTime) {
+        if(this.#downTime <= 0) return; // ダウンしていなければ返す
+
+        this.#downTime -= deltaTime;
+
+        // 復活
+        if(this.#downTime <= 0) {
+            this.#playerDeltaSprite.show();
+            this.#playerSprite.changeChar(0, 5, 1, 1); // おおかみさんの顔がもどる
+            this.#downTime = 0;
+        }
+    }
+
+    // プレイヤーが撃たれる
+    #hitPlayer () {
+        if(!this.#startFlag || this.#resultFlag) return; // 始まっていなかったり終わっていたら返す
+        if(this.#downTime > 0) return;
+
+        // すべての敵とショットの組み合わせ
+        const p = this.#playerDeltaSprite;
+
+        for(let i = 0; i < this.#enemyShotSprite.length; i++) {
+            const s = this.#enemyShotSprite[i];
+            if(!s.showFlag) continue;
+            if(!p.hitTest(s.x + Sprite.charWidth / 2, s.y + Sprite.charHeight / 2)) continue; // 当たっていなければ次
+            
+            p.hide(); // 自機を消す
+            s.hide(); // 敵ショットを消す
+            this.#playerSprite.changeChar(1, 5, 1, 1); // おおかみさんが嫌な顔をする
+
+            this.#downTime = 3;
+
+            sound.play(25, 0.2, 25);
+        }
+    }
+
+    // 敵を撃つ
+    #hitEnemy () {
+        if(!this.#startFlag || this.#resultFlag) return; // 始まっていなかったり終わっていたら返す
+
+        // すべての敵とショットの組み合わせ
+        for(let i = 0; i < this.#enemyDeltaSprite.length; i++) {
+            const e = this.#enemyDeltaSprite[i];
+            if(!e.showFlag) continue;
+
+            for(let i = 0; i < this.#playerShotSprite.length; i++) {
+                const s = this.#playerShotSprite[i];
+                if(!s.showFlag) continue;
+                if(!e.hitTest(s.x + Sprite.charWidth / 2, s.y + Sprite.charHeight / 2)) continue; // 当たっていなければ次
+                
+                e.hide(); // 敵を消す
+                s.hide(); // ショットを消す
+                super.point--;
+
+                sound.play(61, 0.05, 49);
+            }
+        }
+    }
+
+    // 開始
+    #start () {
+        if(Math.floor(this.#prevTime) === -2 && Math.floor(this.#time) === -1) sound.play(73, 1, 73); // 開始音
+        if(Math.floor(this.#prevTime) === -1 && Math.floor(this.#time) === 0) this.#startFlag = true; // 開始後のフラグ
+    }
+
+    // 終了
+    #end () {
+        const l = this.#enemyTable[0].length + 8;
+        if(
+            Math.floor(this.#prevTime) === l && Math.floor(this.#time) === l + 1
+        ) {
+            this.#resultFlag = true; // 終了フラグを立てる
+
+            // ショットをすべて消す
+            for(let i = 0; i < this.#playerShotSprite.length; i++) {
+                this.#playerShotSprite[i].hide();
+            }
+            for(let i = 0; i < this.#enemyShotSprite.length; i++) {
+                this.#enemyShotSprite[i].hide();
+            }
+
+            if(super.point > 0) sound.play(61, 0.5, 61); // 終了音
+            else sound.play(73, 1, 73); // 全部撃ったときの終了音
+        }
+    }
+
     #push (pointer) {
         if(pointer.down !== 1) return; // 画面を押していなければ返す
+        if(this.#downTime !== 0) return; // 自機を壊されてダウンしている
+        if(!this.#startFlag || this.#resultFlag) return; // 始まっていなかったり終わっていたら返す
+
+        if(pointer.x < Sprite.charWidth / 2 || canvas.width - Sprite.charWidth / 2 <= pointer.x) return; // 画面の横のフチを押していたら返す
+
+        this.#playerSprite.x = pointer.x - Sprite.charWidth / 2;
+        this.#playerDeltaSprite.x = this.#playerSprite.x;
     }
 
     draw () {
@@ -1349,7 +1656,6 @@ const Shooting = class extends Game {
         // スプライトをすべて描画
         this.#playerSprite.draw();
         this.#playerDeltaSprite.draw();
-        for(let i = 0; i < this.#earthSprite.length; i++) this.#earthSprite[i].draw();
         for(let i = 0; i < this.#playerShotSprite.length; i++) this.#playerShotSprite[i].draw();
         for(let i = 0; i < this.#enemyDeltaSprite.length; i++) this.#enemyDeltaSprite[i].draw();
         for(let i = 0; i < this.#enemyShotSprite.length; i++) this.#enemyShotSprite[i].draw();
@@ -1638,7 +1944,7 @@ canvas.addEventListener('click', (e) => {
 
 // 画面がブラウザに復帰した
 document.addEventListener('visibilitychange', (e) => {
-    if (!document.hidden) {
+    if (document.hidden) {
         sound.started = false;
         dream.start();
     }
