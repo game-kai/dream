@@ -901,22 +901,55 @@ const Souko = class extends Game {
 const Ball = class extends Game {
 
     #resultFlag = false;
+    #playerSprite = null;
+    #ballSprite = null;
+    #goalSprite = null;
+    #barSprite = new Array(3);
 
     constructor (screen) {
         super(screen);
+
+        this.#playerSprite = new Sprite(screen);
+        this.#ballSprite = new Sprite(screen);
+        this.#goalSprite = new Sprite(screen);
+        for(let i = 0; i < this.#barSprite.length; i++) {
+            this.#barSprite[i] = new Sprite(screen);
+        }
     }
 
     start () {
         super.start();
+
+        // スプライトのキャラ設定
+        this.#playerSprite.changeChar(0, 3, 1, 1);
+        this.#ballSprite.changeChar(3, 3, 1, 1);
+        this.#goalSprite.changeChar(4, 3, 1, 1);
+        for(let i = 0; i < this.#barSprite.length; i++) {
+            this.#barSprite[i].changeChar(2, 3, 1, 1);
+        }
+
+        const cw = Sprite.charWidth;
+        const ch = Sprite.charHeight;
+
+        // スプライトの位置設定
+        this.#playerSprite.setPosition(7 * cw, 3.5 * ch);
+        this.#ballSprite.setPosition(3.5 * cw, 3.5 * ch);
+        this.#goalSprite.setPosition(0 * cw, 3.5 * ch);
+        for(let i = 0; i < this.#barSprite.length; i++) {
+            this.#barSprite[i].setPosition(7 * cw, (2.5 + i) * ch);
+        }
+
+        super.point = 0;
     }
 
     poll (deltaTime, pointer) {
         const end = super.poll(deltaTime, pointer);
         if(end && this.#resultFlag) return super.point;
-        if(end) return -1;
+        if(end) return 0; // TODO: 本来はハイスコアの0ではなく-1を返してキャンセル終了したことを表す
 
 
         this.#push(pointer);
+        this.draw();
 
         return 100;
     }
@@ -930,6 +963,14 @@ const Ball = class extends Game {
 
     draw () {
         super.draw();
+
+        // スプライトをすべて描画
+        this.#playerSprite.draw();
+        this.#ballSprite.draw();
+        this.#goalSprite.draw();
+        for(let i = 0; i < this.#barSprite.length; i++) {
+            this.#barSprite[i].draw();
+        }
     }
 }
 
