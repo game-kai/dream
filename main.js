@@ -1362,7 +1362,6 @@ const Shooting = class extends Game {
     #enemyShotSprite = new Array(64);
     #enemyTable = [
         [
-            1, 0, 0, 0, 0, 0, 0, 0,
             1, 0, 0, 0, 1, 0, 0, 0,
             1, 1, 0, 0, 0, 0, 0, 0,
             1, 0, 0, 0, 1, 0, 0, 0,
@@ -1371,7 +1370,6 @@ const Shooting = class extends Game {
             1, 1, 1, 1, 0, 0, 0, 0,
         ],
         [
-            0, 0, 0, 0, 1, 0, 0, 0,
             0, 0, 1, 0, 0, 0, 1, 0,
             0, 0, 0, 0, 1, 1, 0, 0,
             0, 0, 1, 0, 0, 0, 1, 0,
@@ -1652,7 +1650,7 @@ const Shooting = class extends Game {
                 s.hide(); // ショットを消す
                 super.point--;
 
-                sound.play(61, 0.05, 49);
+                sound.play(61, 0.05, 37);
             }
         }
     }
