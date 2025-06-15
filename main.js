@@ -78,11 +78,9 @@ const Pointer = class {
         const width = rect.width;
         const height = rect.height;
 
-        // 特別にクリックのみ別に処理
-        if(down === 2) {
-            sound.start();
+        // 特別にクリックのみ別に処理 TODO: クリックはルーペが出るのでやめた
+        if(down === 1) {
             this.#clicked = true;
-            return;
         }
 
         // 0が送られてくるとそのまま、1は押されているに更新、-1は押されていないに更新
@@ -1647,7 +1645,6 @@ const Shooting = class extends Game {
 
     #push (pointer) {
         if(pointer.down !== 1) return; // 画面を押していなければ返す
-        if(this.#downTime !== 0) return; // 自機を壊されてダウンしている
         if(!this.#startFlag || this.#resultFlag) return; // 始まっていなかったり終わっていたら返す
 
         if(pointer.x < Sprite.charWidth / 2 || canvas.width - Sprite.charWidth / 2 <= pointer.x) return; // 画面の横のフチを押していたら返す
@@ -1672,14 +1669,77 @@ const Shooting = class extends Game {
 // ジャンプのクラス
 const Jump = class extends Game {
     
+    #startFlag = false;
     #resultFlag = false;
+    #playerSprite = null;
+    #blockSprite = null; // コインや空白も含めた地形のスプライト
+    #stageData = [
+        '                                            ---                ---          ---                               ',
+        '                                      ---                                -  +++                               ',
+        '         ---          ---                          -   -         +   -   +         - - - - -                  ',
+        '      -          ---                    +++++                +       +             - - - - -     -----        ',
+        '                        +++++       ++                      +++                    - - - - -     -----        ',
+        '          +  ---   +++  +++++  --- ++++        +++   +   + +++++                             --- ----- -      ',
+        '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++',
+    ] // 地形データ
+    #time = -3; // 開始からの時刻
+    #prevTime = -3; // 前回フレームの時刻
+    #vx = 0; // プレイヤーのX速度
+    #vy = 0; // プレイヤーのY速度
+    #ax = 2; // プレイヤーのX加速度
+    #ay = 32; // プレイヤーのY加速度
+    #maxVx = 2; // 最高速度X
+    #maxVy = 64; // 最高速度Y
+    #landing = true; // 着地しているかのフラグ
+    #scrollX = 0; // 画面のスクロール位置
+    #prevScrollX = 0; // 前フレームの画面のスクロール位置
+    #animFrame = 0; // 歩くアニメーションのフレーム
 
     constructor (screen) {
         super(screen);
+
+        // スプライトを初期化
+        this.#playerSprite = new Sprite(screen);
+        this.#blockSprite = new Array(7);
+        for(let y = 0; y < this.#blockSprite.length; y++) {
+            this.#blockSprite[y] = new Array(9);
+            for(let x = 0; x < this.#blockSprite[y].length; x++) {
+                this.#blockSprite[y][x] = new Sprite(screen);
+            }
+        }
     }
 
     start () {
         super.start();
+
+        const cw = Sprite.charWidth;
+        const ch = Sprite.charHeight;
+
+        this.#playerSprite.changeChar(0, 6, 1, 1);
+        this.#playerSprite.setPosition(3.5 * cw, 6 * ch);
+        for(let y = 0; y < this.#blockSprite.length; y++) {
+            for(let x = 0; x < this.#blockSprite[y].length; x++) {
+                this.#blockSprite[y][x].changeChar(5, 6, 1, 1);
+                const c = this.#stageData[y].substring(x, x + 1);
+                if(c === ' ') this.#blockSprite[y][x].hide();
+                if(c === '-') this.#blockSprite[y][x].cx = 6;
+                this.#blockSprite[y][x].setPosition(x * cw, (y + 1) * ch);
+            }
+        }
+
+        // 全コイン数を数える
+        super.point = 0;
+        for(let y = 0; y < this.#stageData.length; y++) {
+            for(let x = 0; x < this.#stageData[y].length; x++) {
+                const c = this.#stageData[y].substring(x, x + 1);
+                if(c === '-') super.point++;
+            }
+        }
+
+        this.#vx = 0; // プレイヤーのX速度
+        this.#vy = 0; // プレイヤーのY速度
+        this.#landing = true;
+        this.#animFrame = 0;
     }
 
     poll (deltaTime, pointer) {
@@ -1687,21 +1747,203 @@ const Jump = class extends Game {
         if(end && this.#resultFlag) return super.point;
         if(end) return -1;
 
+        this.#start();
+        this.#end();
 
         this.#push(pointer);
+
+        this.#walk(deltaTime);
+        this.#hit();
+
+        this.draw();
+
+        this.#prevTime = this.#time;
+        this.#time += deltaTime;
 
         return 100;
     }
 
-    #push (pointer) {
-        if(
-            pointer.down !== 1 ||
-            pointer.count !== 0
-        ) return;
+    // 歩く
+    #walk (deltaTime) {
+        if(!this.#startFlag) return;
+        if(this.#resultFlag) return;
+
+        const cw = Sprite.charWidth;
+        const ch = Sprite.charHeight;
+
+        // 加速度を足す
+        this.#vx += this.#ax * deltaTime;
+        if(!this.#landing) this.#vy += this.#ay * deltaTime; // 着地していなければ落ちる
+
+        // 前回のスクロール位置を退避
+        this.#prevScrollX = this.#scrollX;
+
+        // ゴール位置でなければX速度を位置に足す
+        if(Math.floor(this.#scrollX) < this.#stageData[0].length - this.#blockSprite[0].length)
+            this.#scrollX += Math.min(this.#vx, this.#maxVx) * deltaTime;
+
+        // Y速度を位置に足す
+        this.#playerSprite.y += Math.max(-this.#maxVy, Math.min(this.#vy, this.#maxVy)) * deltaTime;
+
+        // プレイヤーの見た目
+        this.#animFrame += Math.min(this.#vx, this.#maxVx) * deltaTime * 4;
+        if(this.#landing) this.#playerSprite.changeChar(Math.floor(this.#animFrame % 2), 6, 1, 1); // 歩いているアニメーション
+        else this.#playerSprite.changeChar(2, 6, 1, 1); // ジャンプしているポーズ
+
+        const pi = Math.floor(this.#prevScrollX);
+        const i = Math.floor(this.#scrollX); // スクロールの整数部分
+        const f = this.#scrollX - i; // スクロールの小数部分
+
+        const l = this.#blockSprite[0].length; // 画面上の横ブロック数
+
+        // スクロールのブロック切り替わり
+        if(pi < i) {
+            for(let y = 0; y < this.#blockSprite.length; y++) {
+                const b = this.#blockSprite[y][pi % l];
+                const c = this.#stageData[y].substring(i + l - 1, i + l);
+                b.show();
+                if(c === ' ') b.hide();
+                if(c === '+') b.cx = 5;
+                if(c === '-') b.cx = 6;
+            }
+        }
+
+        // スクロールでスプライトをずらす
+        for(let y = 0; y < this.#blockSprite.length; y++) {
+            for(let x = 0; x < this.#blockSprite[y].length; x++) {
+                const b = this.#blockSprite[y][x];
+                if(!b.showFlag) continue;
+                
+                let bi = x - i;
+                while(bi < 0) bi += l;
+
+                b.x = (bi - f) * cw;
+            }
+        }
     }
 
+    // ブロックやコインとの当たり判定
+    #hit() {
+        if(!this.#startFlag) return;
+        if(this.#resultFlag) return;
+
+        const cw = Sprite.charWidth;
+        const ch = Sprite.charHeight;
+
+        // 全ブロックスプライトにあたり判定を行う
+        this.#ax = 2; // 加速度を0にする
+        this.#ay = 512; // 加速度を0にする
+        const prevLanding = this.#landing;
+        this.#landing = false;
+        const p = this.#playerSprite;
+        for(let y = 0; y < this.#blockSprite.length; y++) {
+            for(let x = 0; x < this.#blockSprite[y].length; x++) {
+                const b = this.#blockSprite[y][x];
+                if(!b.showFlag) continue;
+
+                // ブロックの頭上
+                let head = false;
+                if(b.hitTest(p.x + 4, p.y)) head = true;
+                if(b.hitTest(p.x + cw - 5, p.y)) head = true;
+                if(head && b.cx === 5) {
+                    p.y = Math.ceil(p.y); // ブロックの下に位置に修正
+                    this.#vy = 32; // 落下速度を32にする
+                    continue;
+                }
+
+                // ブロックの着地判定
+                let land = false;
+                if(b.hitTest(p.x + 4, p.y + ch)) land = true;
+                if(b.hitTest(p.x + cw - 5, p.y + ch)) land = true;
+                if(land && b.cx === 5 && !this.#landing && this.#vy >= 0) {
+                    this.#landing = true; // 着地フラグを立てる
+                    this.#vy = 0; // 速度を0にする
+                    this.#ay = 0; // 加速度を0にする
+                    p.y = Math.floor(p.y / ch) * ch; // 着地した位置に修正
+                    continue;
+                }
+
+                let hitRight = false;
+                let hitLeft = false;
+                if(b.hitTest(p.x + 1, p.y + 2)) hitLeft = true; // 左上判定
+                if(b.hitTest(p.x + 1, p.y + ch - 3)) hitLeft = true; // 左下判定
+                if(b.hitTest(p.x + cw - 2, p.y + 2)) hitRight = true; // 右上判定
+                if(b.hitTest(p.x + cw - 2, p.y + ch - 3)) hitRight = true; // 右下判定
+
+                // コインを取った
+                if((hitLeft || hitRight) && b.cx === 6) {
+                    super.point--;
+                    b.hide(); // コインを消す
+                    sound.play(63, 0.05, 63); // 取得音
+                    continue;
+                }
+
+                // 壁にぶつかった
+                if(hitRight && b.cx === 5) {
+                    this.#scrollX = Math.floor(this.#scrollX) + 11 / cw; // 押し出す
+                    this.#vx = 0; // 速度を0にする
+                    this.#ax = 0; // 加速度を0にする
+                    this.#animFrame = 0; // アニメーションフレームを0にする
+                    continue;
+                }
+            }
+        }
+
+        // 壁にぶつかるとたぬきさんがやれやれという顔をする
+        if(this.#vx === 0 && this.#landing) p.cx = 3;
+
+        if(!prevLanding && this.#landing) sound.play(51, 0.05, 27); // 着地音
+    }
+
+    // 開始チェック
+    #start () {
+        if(Math.floor(this.#prevTime) === -2 && Math.floor(this.#time) === -1) sound.play(75, 1, 75); // 開始音
+        if(Math.floor(this.#prevTime) === -1 && Math.floor(this.#time) === 0) this.#startFlag = true; // 開始後のフラグ
+    }
+
+    // 終了チェック
+    #end () {
+        if(this.#resultFlag) return;
+        if(!this.#landing) return;
+
+        const l = this.#stageData[0].length - this.#blockSprite[0].length;
+        if(Math.floor(this.#prevScrollX) >= l) {
+            this.#resultFlag = true; // 終了フラグを立てる
+
+            this.#playerSprite.changeChar(4, 6, 1, 1); // たぬきさんがゴールしたポーズをする
+
+            if(super.point > 0) sound.play(51, 1, 51); // 終了音
+            else sound.play(75, 1, 75); // 全部撃ったときの終了音
+        }
+    }
+
+    // 画面を押した
+    #push (pointer) {
+        if(!this.#startFlag) return;
+        if(this.#resultFlag) return;
+
+        // ジャンプ開始
+        if(this.#landing && pointer.down === 1 && pointer.count === 0) {
+            this.#landing = false; // 着地フラグをおろす
+            this.#vy = -128; // 上に跳ぶ速度
+            sound.play(27, 0.1, 51); // ジャンプ音
+        }
+
+        // 空中
+        if(!this.#landing && pointer.down === 1) this.#ay = 160;
+        if(!this.#landing && pointer.down !== 1) this.#ay = 512;
+    }
+
+    // 描画
     draw () {
         super.draw();
+
+        this.#playerSprite.draw();
+        for(let y = 0; y < this.#blockSprite.length; y++) {
+            for(let x = 0; x < this.#blockSprite[y].length; x++) {
+                this.#blockSprite[y][x].draw();
+            }
+        }
     }
 }
 
@@ -1817,6 +2059,8 @@ const Dream = class {
             pointer.count !== 0 ||
             this.#game !== null
         ) return;
+        
+        sound.start();
 
         for(let i = 0; i < this.#menuArray.length; i++) {
             const m = this.#menuArray[i];
@@ -1909,52 +2153,37 @@ const Dream = class {
 
         this.#prevTimestamp = timestamp;
     }
+
+    // タイトルかどうかを返す
+    get isTitle () {
+        return this.#isTitle;
+    }
 }
 const dream = new Dream(screen, pointer);
 dream.start();
 
 // キャンバスを指で押す
 canvas.addEventListener('mousedown', (e) => {
-    e.stopPropagation();
     pointer.update(e.clientX, e.clientY, 1);
 });
 canvas.addEventListener('touchstart', (e) => {
-    e.stopPropagation();
     pointer.update(e.touches[0].clientX, e.touches[0].clientY, 1);
 });
 
 // キャンバス上のポインター移動
 canvas.addEventListener('mousemove', (e) => {
-    e.stopPropagation();
     pointer.update(e.clientX, e.clientY, 0);
 });
 canvas.addEventListener('touchmove', (e) => {
-    e.stopPropagation();
     pointer.update(e.touches[0].clientX, e.touches[0].clientY, 0);
 });
 
 // キャンバスから指を離す
 canvas.addEventListener('mouseup', (e) => {
-    e.stopPropagation();
     pointer.update(e.clientX, e.clientY, -1);
 });
 canvas.addEventListener('touchend', (e) => {
-    e.stopPropagation();
     pointer.update(0, 0, -1);
-});
-
-// キャンバスをクリック
-canvas.addEventListener('click', (e) => {
-    e.stopPropagation();
-    pointer.update(e.clientX, e.clientY, 2);
-});
-
-// 画面がブラウザに復帰した
-document.addEventListener('visibilitychange', (e) => {
-    if (document.hidden) {
-        sound.started = false;
-        dream.start();
-    }
 });
 
 // キャンバス以外は押しても無効
@@ -1971,3 +2200,11 @@ body.addEventListener('touchmove', stopEvent, { passive: false })
 body.addEventListener('touchend', stopEvent, { passive: false })
 body.addEventListener('click', stopEvent, { passive: false });
 body.addEventListener('contextmenu', stopEvent, { passive: false });
+
+// 画面がブラウザに復帰した
+document.addEventListener('visibilitychange', (e) => {
+    if (document.hidden) {
+        sound.started = false;
+        dream.start();
+    }
+});
