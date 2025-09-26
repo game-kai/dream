@@ -1,5 +1,3 @@
 # どりーむゲーム
 
-[あそぶ](https://aught-ace.github.io/dream/)
-
-![どりーむゲームQRコード](qrcode.png)
+[あそぶ](https://game-kai.github.io/dream/)
